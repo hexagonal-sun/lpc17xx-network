@@ -2,6 +2,7 @@
 #include "arp.h"
 #include "memory.h"
 #include "byteswap.h"
+#include <string.h>
 
 #define DESC_LEN 5
 
@@ -11,15 +12,28 @@ typedef struct
     uint32_t control;
 } txrx_descriptor;
 
+typedef struct
+{
+    uint32_t status_hash_crc;
+    uint32_t status_info;
+} rx_status_t;
+
 /* txrx descriptor arrays. */
 txrx_descriptor tx_desc[DESC_LEN];
 txrx_descriptor rx_desc[DESC_LEN];
 uint32_t tx_status[DESC_LEN];
+rx_status_t rx_status[DESC_LEN];
 
 /* Our ethernet address, set at init time. */
 uint8_t ether_addr[ETHER_ADDR_LEN];
 
 #define PHY_ADDR 1
+
+static void ether_rx_frame(void *frame, int frame_len)
+{
+    ethernet_header *header = frame;
+    swap_endian16(&header->ether_type);
+}
 
 void phy_write(int reg, int writeval)
 {
@@ -37,6 +51,53 @@ unsigned short phy_read(unsigned char reg)
     LPC_EMAC->MCMD = 0;
     return (LPC_EMAC->MRDD);
 }
+
+void irq_enet()
+{
+    static void *current_frame = 0;
+    static int current_frame_len = 0;
+    int desc_idx = LPC_EMAC->RxConsumeIndex,
+        frag_len = rx_status[desc_idx].status_info & 0x7FF;
+    void *frag = rx_desc[desc_idx].packet;
+
+    while (LPC_EMAC->RxConsumeIndex != LPC_EMAC->RxProduceIndex) {
+
+        /* Gather the new fragment out of DMA memory. */
+        if (current_frame) {
+            void *new_frame_buf;
+
+            new_frame_buf = get_mem(current_frame_len + frag_len);
+            memcpy(new_frame_buf, current_frame, current_frame_len);
+            memcpy(new_frame_buf + frag_len, frag, frag_len);
+
+            free_mem(current_frame);
+
+            current_frame_len += frag_len;
+            current_frame = new_frame_buf;
+        } else {
+            current_frame = get_mem(frag_len);
+            memcpy(current_frame, frag, frag_len);
+            current_frame_len = frag_len;
+        }
+
+        /* Do we have a full frame? */
+        if (rx_status[desc_idx].status_info & (1 << 30)) {
+
+            /* We do, process it. */
+            ether_rx_frame(current_frame, current_frame_len);
+            free_mem(current_frame);
+            current_frame = 0;
+            current_frame_len = 0;
+        }
+
+        desc_idx += 1;
+        desc_idx %= LPC_EMAC->RxDescriptorNumber;
+        LPC_EMAC->RxConsumeIndex = desc_idx;
+    }
+
+    LPC_EMAC->IntClear = (1 << 3);
+}
+
 
 void ethernet_init(uint8_t mac_address[6])
 {
@@ -97,6 +158,12 @@ void ethernet_init(uint8_t mac_address[6])
     LPC_EMAC->SA1 = (mac_address[2] << 8) | mac_address[3];
     LPC_EMAC->SA2 = (mac_address[4] << 8) | mac_address[5];
 
+    /* Allocate the receive fragment buffers. */
+    for (i = 0; i < DESC_LEN; i++) {
+        rx_desc[i].packet = get_mem(12);
+        rx_desc[i].control = 12 | (1 << 31);
+    }
+
     /* Copy to our static mac address variable. */
     for (i = 0; i < ETHER_ADDR_LEN; i++)
         ether_addr[i] = mac_address[i];
@@ -105,6 +172,7 @@ void ethernet_init(uint8_t mac_address[6])
     LPC_EMAC->RxDescriptor = (uint32_t)rx_desc;
     LPC_EMAC->TxDescriptor = (uint32_t)tx_desc;
     LPC_EMAC->TxStatus = (uint32_t)tx_status;
+    LPC_EMAC->RxStatus = (uint32_t)rx_status;
 
     /* Set the txrx desc array length. */
     LPC_EMAC->RxDescriptorNumber = DESC_LEN - 1;
@@ -114,9 +182,14 @@ void ethernet_init(uint8_t mac_address[6])
     LPC_EMAC->RxConsumeIndex = 0;
     LPC_EMAC->TxProduceIndex = 0;
 
-    /* Enable Tx! */
-    LPC_EMAC->Command |= 2 | (1 << 9);
+    /* Set RECEIVE_ENABLE */
+    LPC_EMAC->MAC1 |= 1;
 
+    /* Enable interrupts on rx. */
+    LPC_EMAC->IntEnable |= (1 << 3);
+
+    /* Enable Tx & Rx! */
+    LPC_EMAC->Command |= 3 | (1 << 9) | (1 << 7);
 }
 
 static void emac_xmit_frame(ethernet_header *header, void *payload, int payload_len)

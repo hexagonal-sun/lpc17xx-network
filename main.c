@@ -28,7 +28,9 @@ int main(void) {
     /* Reset and interrupt on TC==MR0. */
     LPC_TIM0->MCR = 0x3;
 
+
     NVIC_EnableIRQ(TIMER0_IRQn);
+    NVIC_EnableIRQ(ENET_IRQn);
     __enable_irq();
 
     LPC_TIM0->TCR = 0x1;
