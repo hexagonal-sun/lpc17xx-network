@@ -12,7 +12,7 @@ LD = $(TOOLCHAIN)-ld
 COMMONFLAGS = -mcpu=cortex-m3 -mthumb -nostartfiles
 LIBS = -lm
 LDFLAGS = -L$(NEWLIB) $(COMMONFLAGS) -T $(LDSCRIPT)
-CFLAGS = $(COMMONFLAGS) -nostartfiles -c
+CFLAGS = $(COMMONFLAGS) -nostartfiles -c -g
 
 lpc-network.elf: $(OBJECTS) $(LDSCRIPT)
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $@ $(LIBS)
