@@ -1,5 +1,5 @@
 OBJECTS = main.o arp.o byteswap.o ethernet.o memory.o vectors.o	\
-init.o
+init.o lpc17xx.o
 
 NEWLIB = /usr/arm-none-eabi/lib/armv7-m
 LDSCRIPT = linker.ld

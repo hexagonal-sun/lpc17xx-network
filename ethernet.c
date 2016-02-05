@@ -1,4 +1,4 @@
-#include "LPC17xx.h"
+#include "lpc17xx.h"
 #include "arp.h"
 #include "memory.h"
 #include "byteswap.h"

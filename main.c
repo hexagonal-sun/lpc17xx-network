@@ -1,4 +1,4 @@
-#include "LPC17xx.h"
+#include "lpc17xx.h"
 #include "ethernet.h"
 #include "memory.h"
 #include "arp.h"
@@ -28,10 +28,13 @@ int main(void) {
     /* Reset and interrupt on TC==MR0. */
     LPC_TIM0->MCR = 0x3;
 
+    /* Enable Timer 0 interrupts. */
+    LPC_NVIC->ISER0 = (1 << 1);
 
-    NVIC_EnableIRQ(TIMER0_IRQn);
-    NVIC_EnableIRQ(ENET_IRQn);
-    __enable_irq();
+    /* Enable Ethernet Mac interrupts. */
+    LPC_NVIC->ISER0 = (1 << 28);
+
+    __asm__("cpsie i");
 
     LPC_TIM0->TCR = 0x1;
 
