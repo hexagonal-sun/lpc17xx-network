@@ -14,8 +14,8 @@ typedef struct
 
 typedef struct
 {
-    uint32_t status_hash_crc;
     uint32_t status_info;
+    uint32_t status_hash_crc;
 } rx_status_t;
 
 /* txrx descriptor arrays. */
