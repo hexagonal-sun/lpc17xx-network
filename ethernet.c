@@ -19,10 +19,10 @@ typedef struct
 } rx_status_t;
 
 /* txrx descriptor arrays. */
-txrx_descriptor tx_desc[DESC_LEN];
-txrx_descriptor rx_desc[DESC_LEN];
-uint32_t tx_status[DESC_LEN];
-rx_status_t rx_status[DESC_LEN];
+txrx_descriptor __attribute__((aligned(4))) tx_desc[DESC_LEN];
+txrx_descriptor __attribute__((aligned(4))) rx_desc[DESC_LEN];
+uint32_t        __attribute__((aligned(4))) tx_status[DESC_LEN];
+rx_status_t     __attribute__((aligned(8))) rx_status[DESC_LEN];
 
 /* Our ethernet address, set at init time. */
 uint8_t ether_addr[ETHER_ADDR_LEN];
