@@ -56,11 +56,11 @@ void irq_enet()
 {
     static void *current_frame = 0;
     static int current_frame_len = 0;
-    int desc_idx = LPC_EMAC->RxConsumeIndex,
-        frag_len = rx_status[desc_idx].status_info & 0x7FF;
-    void *frag = rx_desc[desc_idx].packet;
 
     while (LPC_EMAC->RxConsumeIndex != LPC_EMAC->RxProduceIndex) {
+        int desc_idx = LPC_EMAC->RxConsumeIndex,
+            frag_len = rx_status[desc_idx].status_info & 0x7FF;
+        void *frag = rx_desc[desc_idx].packet;
 
         /* Gather the new fragment out of DMA memory. */
         if (current_frame) {
