@@ -6,7 +6,7 @@ extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
 
 /* Called straight after reset.  Copy over the data, zero the BSS and
  * call main. */
-void _start()
+void __attribute__((noreturn)) _start()
 {
     uint8_t *src = &_etext;
     uint8_t *dst = &_sdata;
@@ -22,7 +22,6 @@ void _start()
     /* Call main. */
     main();
 
-    /* Should be unreachable, but if we do reach it, loop forever. */
-    while (1) {};
-    return;
+    __asm__ volatile ("b .");
+    __builtin_unreachable();
 }
