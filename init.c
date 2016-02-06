@@ -1,5 +1,7 @@
 #include <stdint.h>
 
+void main();
+
 extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
 
 /* Called straight after reset.  Copy over the data, zero the BSS and
