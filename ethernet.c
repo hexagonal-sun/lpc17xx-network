@@ -29,3 +29,16 @@ void ether_xmit_payload(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
 
     free_mem(header);
 }
+
+int ethernet_mac_equal(uint8_t *a, uint8_t *b)
+{
+    if (memcmp(a, b, ETHER_ADDR_LEN))
+        return 0;
+    else
+        return 1;
+}
+
+void ethernet_mac_copy(uint8_t *dst, uint8_t *src)
+{
+    memcpy(dst, src, ETHER_ADDR_LEN);
+}
