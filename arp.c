@@ -12,6 +12,15 @@ struct arp_entry
 
 struct arp_entry *arp_table = 0;
 
+static void arp_swap_endian(arp_packet *packet)
+{
+    swap_endian16(&packet->HTYPE);
+    swap_endian16(&packet->PTYPE);
+    swap_endian16(&packet->OPER);
+    swap_endian32(&packet->SPA);
+    swap_endian32(&packet->TPA);
+}
+
 uint8_t * resolve_address(uint32_t ip_address)
 {
     int i;
@@ -40,11 +49,7 @@ uint8_t * resolve_address(uint32_t ip_address)
     arp_request->SPA = OUR_IP_ADDRESS;
     arp_request->TPA = ip_address;
 
-    swap_endian16(&arp_request->HTYPE);
-    swap_endian16(&arp_request->PTYPE);
-    swap_endian16(&arp_request->OPER);
-    swap_endian32(&arp_request->SPA);
-    swap_endian32(&arp_request->TPA);
+    arp_swap_endian(arp_request);
 
     ether_xmit_payload(broadcast_addr, ETHERTYPE_ARP, arp_request,
                        sizeof(*arp_request));
