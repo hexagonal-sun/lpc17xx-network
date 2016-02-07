@@ -18,5 +18,7 @@ typedef struct
 
 #define HTYPE_ETHERNET 1
 #define OPER_REQUEST 1
+#define OPER_REPLY 2
 
 uint8_t * resolve_address(uint32_t IpAddress);
+void arp_process_packet(void *payload, int payload_len);

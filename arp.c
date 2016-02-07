@@ -58,3 +58,40 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     return 0;
 }
+
+void arp_process_packet(void *payload, int payload_len)
+{
+    arp_packet *packet = payload;
+
+    arp_swap_endian(packet);
+
+    /* We are only interested in Ethernet type ARP packets. */
+    if (packet->HTYPE != HTYPE_ETHERNET)
+        return;
+
+    switch (packet->OPER)
+    {
+    case OPER_REQUEST:
+        /* TODO: Send an appropriate ARP reply if we are the subject
+         * of the request. */
+        return;
+    case OPER_REPLY:
+    {
+        struct arp_entry *new_arp_entry;
+
+        /* Ensure this packet is for us. */
+        if (!ethernet_mac_equal(ether_addr, packet->THA))
+            return;
+
+        new_arp_entry = get_mem(sizeof(*new_arp_entry));
+
+        ethernet_mac_copy(new_arp_entry->ether_addr, packet->SHA);
+        new_arp_entry->ipaddr = packet->SPA;
+
+        new_arp_entry->next = arp_table;
+        arp_table = new_arp_entry;
+    }
+    default:
+        return;
+    }
+}
