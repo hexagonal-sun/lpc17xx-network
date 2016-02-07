@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define DESC_LEN 5
+#define RX_FRAG_BUF_SZ 127
 
 typedef struct
 {
@@ -160,8 +161,8 @@ void ethernet_init(uint8_t mac_address[6])
 
     /* Allocate the receive fragment buffers. */
     for (i = 0; i < DESC_LEN; i++) {
-        rx_desc[i].packet = get_mem(12);
-        rx_desc[i].control = 12 | (1 << 31);
+        rx_desc[i].packet = get_mem(RX_FRAG_BUF_SZ);
+        rx_desc[i].control = (RX_FRAG_BUF_SZ - 1) | (1 << 31);
     }
 
     /* Copy to our static mac address variable. */
