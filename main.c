@@ -1,5 +1,6 @@
 #include "lpc17xx.h"
 #include "ethernet.h"
+#include "emac.h"
 #include "memory.h"
 #include "arp.h"
 #include <math.h>

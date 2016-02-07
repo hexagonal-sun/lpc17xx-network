@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "arp.h"
 #include "byteswap.h"
+#include "emac.h"
 
 struct arp_entry
 {
