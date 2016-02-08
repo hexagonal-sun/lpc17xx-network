@@ -3,6 +3,7 @@
 #include "emac.h"
 #include "memory.h"
 #include "arp.h"
+#include "irq.h"
 #include <math.h>
 
 void irq_timer0()
@@ -35,7 +36,7 @@ int main(void) {
     /* Enable Ethernet Mac interrupts. */
     LPC_NVIC->ISER0 = (1 << 28);
 
-    __asm__("cpsie i");
+    __irq_enable();
 
     LPC_TIM0->TCR = 0x1;
 
