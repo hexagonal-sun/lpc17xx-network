@@ -2,11 +2,14 @@
 #include "arp.h"
 #include "memory.h"
 #include "byteswap.h"
+#include "init.h"
 #include <string.h>
 
 #define DESC_LEN 12
 #define RX_FRAG_BUF_SZ 127
 #define PHY_ADDR 1
+
+static uint8_t mac_address[ETHER_ADDR_LEN] = {0, 1, 2, 3, 4, 5};
 
 typedef struct
 {
@@ -92,8 +95,7 @@ void irq_enet()
     LPC_EMAC->IntClear = (1 << 3);
 }
 
-
-void ethernet_init(uint8_t mac_address[6])
+void emac_init()
 {
     int i;
     uint16_t link_params;
@@ -184,7 +186,11 @@ void ethernet_init(uint8_t mac_address[6])
 
     /* Enable Tx & Rx! */
     LPC_EMAC->Command |= 3 | (1 << 9) | (1 << 7);
+
+    /* Enable Ethernet Mac interrupts. */
+    LPC_NVIC->ISER0 = (1 << 28);
 }
+initcall(emac_init);
 
 void emac_xmit_frame(ethernet_header *header,
                      void *payload, int payload_len)
