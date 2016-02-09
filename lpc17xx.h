@@ -211,11 +211,11 @@ typedef struct
     uint32_t STIR;
 } lpc_core_nvic_t;
 
-extern volatile lpc_periph_emac_t   *LPC_EMAC;
-extern volatile lpc_periph_sc_t     *LPC_SC;
-extern volatile lpc_periph_pincon_t *LPC_PINCON;
-extern volatile lpc_periph_timer_t  *LPC_TIM0;
-extern volatile lpc_periph_timer_t  *LPC_TIM1;
-extern volatile lpc_periph_timer_t  *LPC_TIM2;
-extern volatile lpc_periph_timer_t  *LPC_TIM3;
-extern volatile lpc_core_nvic_t     *LPC_NVIC;
+extern volatile lpc_periph_emac_t   * const LPC_EMAC;
+extern volatile lpc_periph_sc_t     * const LPC_SC;
+extern volatile lpc_periph_pincon_t * const LPC_PINCON;
+extern volatile lpc_periph_timer_t  * const LPC_TIM0;
+extern volatile lpc_periph_timer_t  * const LPC_TIM1;
+extern volatile lpc_periph_timer_t  * const LPC_TIM2;
+extern volatile lpc_periph_timer_t  * const LPC_TIM3;
+extern volatile lpc_core_nvic_t     * const LPC_NVIC;
