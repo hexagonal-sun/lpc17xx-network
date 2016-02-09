@@ -9,7 +9,6 @@
 
 int main(void) {
     uint8_t mac_addr[6] = {0, 1, 2, 3, 4, 5};
-    memory_init((void *)0x2007C000, 16);
 
     ethernet_init(mac_addr);
 

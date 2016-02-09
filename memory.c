@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "init.h"
 #include <math.h>
 
 #define BLOCK_SZ 128
@@ -17,10 +18,26 @@ static inline int addr_2_idx(void *addr)
     return ((addr - pm_base) / BLOCK_SZ);
 }
 
-/* Length is in Kilobytes. */
-void memory_init(void *base, uint16_t len)
+typedef struct
 {
-    int i, blocks_used_by_freelist;
+    void *base;
+    uint16_t len;
+} memory_region_t;
+
+memory_region_t memory_regions [] =
+{
+    {
+        .base = (void *)0x2007C000,
+        .len = 16
+    }
+};
+
+/* Length is in Kilobytes. */
+static void memory_init()
+{
+    int i, blocks_used_by_freelist, len = memory_regions[0].len;
+    void *base = memory_regions[0].base;
+
     freelist = base;
 
     /* Determine how many BLOCK_SZ byte blocks there are in len. */
@@ -41,6 +58,7 @@ void memory_init(void *base, uint16_t len)
 
     pm_base = base;
 }
+early_initcall(memory_init);
 
 
 void *get_mem(int len)
