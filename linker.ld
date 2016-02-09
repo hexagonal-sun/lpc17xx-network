@@ -11,13 +11,20 @@ _sstack = _eram1;
 SECTIONS {
    . = 0;
 
+    _stext = .;
     .text : {
-        _stext = .;
         KEEP(*(.vectors))
         *(.text*)
         *(.rodata)
-        _etext = .;
     } >rom
+
+    .initcalls : {
+        _sinitcalls = .;
+        *(.initcall_early*)
+        *(.initcall_0*)
+        _einitcalls = .;
+    } >rom
+    _etext = .;
 
     .data : {
         _sdata = .;

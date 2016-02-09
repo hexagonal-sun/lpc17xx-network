@@ -1,9 +1,19 @@
+#include "init.h"
 #include "lpc17xx.h"
 #include <stdint.h>
 
 void main();
 
 extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
+extern initcall_t _sinitcalls, _einitcalls;
+
+static void call_initcalls()
+{
+    initcall_t *cur = &_sinitcalls;
+
+    while (cur != &_einitcalls)
+        (*cur++)();
+}
 
 static void init_clocking(void)
 {
@@ -70,6 +80,8 @@ void __attribute__((noreturn)) _start()
 
     /* Bring the MCU up to 100 Mhz operation. */
     init_clocking();
+
+    call_initcalls();
 
     /* Call main. */
     main();
