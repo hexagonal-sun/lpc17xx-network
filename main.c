@@ -8,7 +8,6 @@
 #include <math.h>
 
 int main(void) {
-    __irq_enable();
 
     while (1) {
         __asm__("wfi");

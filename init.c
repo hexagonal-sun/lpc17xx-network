@@ -1,5 +1,6 @@
 #include "init.h"
 #include "lpc17xx.h"
+#include "irq.h"
 #include <stdint.h>
 
 void main();
@@ -82,6 +83,8 @@ void __attribute__((noreturn)) _start()
     init_clocking();
 
     call_initcalls();
+
+    __irq_enable();
 
     /* Call main. */
     main();
