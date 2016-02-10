@@ -2,8 +2,13 @@
 #include "arp.h"
 #include "byteswap.h"
 #include "emac.h"
+#include "tick.h"
+#include "atomics.h"
 #include "list.h"
+#include "init.h"
 #include <string.h>
+
+#define ARP_TIMEOUT 250
 
 struct arp_entry
 {
@@ -24,6 +29,27 @@ struct arp_pending_request
 
 LIST(arp_pending_requests);
 LIST(arp_table_head);
+static mutex_t arp_lock = 0;
+
+static void arp_tick()
+{
+    list *i, *tmp;
+    if (!try_lock(&arp_lock))
+        return;
+
+    list_for_each_safe(i, tmp, &arp_pending_requests) {
+        struct arp_pending_request *arp_req =
+            list_entry(i, struct arp_pending_request, requests);
+
+        if (arp_req->tick_count++ >= ARP_TIMEOUT) {
+            arp_req->finished = 1;
+            arp_req->timed_out = 1;
+            list_del(i);
+        }
+    }
+
+    release_lock(&arp_lock);
+}
 
 static void arp_swap_endian(arp_packet *packet)
 {
@@ -110,6 +136,8 @@ void arp_process_packet(void *payload, int payload_len)
         if (!ethernet_mac_equal(ether_addr, packet->THA))
             return;
 
+        get_lock(&arp_lock);
+
         /* Find the request that this packet fulfils */
         list_for_each_safe(i, tmp, &arp_pending_requests) {
             struct arp_pending_request *arp_req =
@@ -133,8 +161,19 @@ void arp_process_packet(void *payload, int payload_len)
                 break;
             }
         }
+        release_lock(&arp_lock);
     }
     default:
         return;
     }
 }
+
+struct tick_work_q arp_tick_work = {
+    .tick_fn = arp_tick
+};
+
+void arp_init(void)
+{
+    tick_add_work_fn(&arp_tick_work);
+}
+initcall(arp_init);
