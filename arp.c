@@ -2,15 +2,16 @@
 #include "arp.h"
 #include "byteswap.h"
 #include "emac.h"
+#include "list.h"
 
 struct arp_entry
 {
     uint8_t ether_addr[ETHER_ADDR_LEN];
     uint32_t ipaddr;
-    struct arp_entry *next;
+    list arp_table;
 };
 
-struct arp_entry *arp_table = 0;
+LIST(arp_table_head);
 
 static void arp_swap_endian(arp_packet *packet)
 {
@@ -24,12 +25,13 @@ static void arp_swap_endian(arp_packet *packet)
 uint8_t * resolve_address(uint32_t ip_address)
 {
     int i;
-    struct arp_entry *cur_arp_entry = arp_table;
+    struct arp_entry *cur;
     uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-    while (cur_arp_entry)
-        if (cur_arp_entry->ipaddr == ip_address)
-            return cur_arp_entry->ether_addr;
+    list_for_each(cur, &arp_table_head, arp_table) {
+        if (cur->ipaddr == ip_address)
+            return cur->ether_addr;
+    }
 
     /* Need to send out ARP packet to resolve address. */
     arp_packet *arp_request = (arp_packet *)get_mem(sizeof(arp_packet));
@@ -83,13 +85,8 @@ void arp_process_packet(void *payload, int payload_len)
         if (!ethernet_mac_equal(ether_addr, packet->THA))
             return;
 
-        new_arp_entry = get_mem(sizeof(*new_arp_entry));
 
-        ethernet_mac_copy(new_arp_entry->ether_addr, packet->SHA);
-        new_arp_entry->ipaddr = packet->SPA;
 
-        new_arp_entry->next = arp_table;
-        arp_table = new_arp_entry;
     }
     default:
         return;
