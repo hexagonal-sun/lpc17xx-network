@@ -124,9 +124,35 @@ void arp_process_packet(void *payload, int payload_len)
     switch (packet->OPER)
     {
     case OPER_REQUEST:
-        /* TODO: Send an appropriate ARP reply if we are the subject
-         * of the request. */
-        return;
+    {
+        arp_packet *resp;
+        int i;
+
+        if (packet->TPA != OUR_IP_ADDRESS)
+            return;
+
+        resp = get_mem(sizeof(*resp));
+
+        resp->HTYPE = HTYPE_ETHERNET;
+        resp->PTYPE = ETHERTYPE_IP;
+        resp->HLEN  = 6;
+        resp->PLEN  = 4;
+        resp->OPER  = OPER_REPLY;
+
+        for (i = 0; i < ETHER_ADDR_LEN; i++) {
+            resp->SHA[i] = ether_addr[i];
+            resp->THA[i] = packet->SHA[i];
+        }
+
+        resp->SPA = OUR_IP_ADDRESS;
+        resp->TPA = packet->SPA;
+
+        arp_swap_endian(resp);
+
+        ether_xmit_payload(packet->SHA, ETHERTYPE_ARP, resp,
+                           sizeof(*resp));
+        break;
+    }
     case OPER_REPLY:
     {
         struct arp_entry *new_arp_entry;
