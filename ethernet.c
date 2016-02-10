@@ -8,7 +8,22 @@
 void ether_rx_frame(void *frame, int frame_len)
 {
     ethernet_header *header = frame;
+    void *payload = frame + sizeof(*header);
+    int payload_len = frame_len - sizeof(*header);
+
     swap_endian16(&header->ether_type);
+
+    switch (header->ether_type)
+    {
+    case ETHERTYPE_ARP:
+        arp_process_packet(payload, payload_len);
+        break;
+    default:
+        /* Drop the packet. */
+        no_dropped_packets++;
+    }
+
+    free_mem(frame);
 }
 
 void ether_xmit_payload(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
