@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include "ethernet.h"
 
-#pragma pack(push, 1)
 /* ARP protocol. */
 typedef struct
 {
@@ -14,7 +13,7 @@ typedef struct
     uint32_t SPA;
     uint8_t  THA[ETHER_ADDR_LEN];
     uint32_t TPA;
-} arp_packet;
+} __attribute__((packed)) arp_packet;
 
 #define HTYPE_ETHERNET 1
 #define OPER_REQUEST 1
