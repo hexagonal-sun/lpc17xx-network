@@ -3,6 +3,7 @@
 #include "byteswap.h"
 #include "emac.h"
 #include "list.h"
+#include <string.h>
 
 struct arp_entry
 {
@@ -11,6 +12,17 @@ struct arp_entry
     list arp_table;
 };
 
+struct arp_pending_request
+{
+    int tick_count;
+    int TPA;
+    int timed_out;
+    int finished;
+    struct arp_entry *answer;
+    list requests;
+};
+
+LIST(arp_pending_requests);
 LIST(arp_table_head);
 
 static void arp_swap_endian(arp_packet *packet)
@@ -26,6 +38,7 @@ uint8_t * resolve_address(uint32_t ip_address)
 {
     int i;
     struct arp_entry *cur;
+    struct arp_pending_request arp_p_req;
     uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
     list_for_each(cur, &arp_table_head, arp_table) {
@@ -51,6 +64,10 @@ uint8_t * resolve_address(uint32_t ip_address)
     arp_request->SPA = OUR_IP_ADDRESS;
     arp_request->TPA = ip_address;
 
+    memset(&arp_p_req, 0, sizeof(arp_p_req));
+    arp_p_req.TPA = ip_address;
+    list_add(&arp_p_req.requests, &arp_pending_requests);
+
     arp_swap_endian(arp_request);
 
     ether_xmit_payload(broadcast_addr, ETHERTYPE_ARP, arp_request,
@@ -58,7 +75,14 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     free_mem(arp_request);
 
-    return 0;
+    while (!arp_p_req.finished) {
+        __asm__ volatile("wfi");
+    }
+
+    if (arp_p_req.timed_out)
+        return 0;
+    else
+        return arp_p_req.answer->ether_addr;
 }
 
 void arp_process_packet(void *payload, int payload_len)
@@ -80,13 +104,35 @@ void arp_process_packet(void *payload, int payload_len)
     case OPER_REPLY:
     {
         struct arp_entry *new_arp_entry;
+        list *i, *tmp;
 
         /* Ensure this packet is for us. */
         if (!ethernet_mac_equal(ether_addr, packet->THA))
             return;
 
+        /* Find the request that this packet fulfils */
+        list_for_each_safe(i, tmp, &arp_pending_requests) {
+            struct arp_pending_request *arp_req =
+                list_entry(i, struct arp_pending_request, requests);
 
+            if (arp_req->TPA == packet->SPA) {
 
+                new_arp_entry = get_mem(sizeof(*new_arp_entry));
+
+                ethernet_mac_copy(new_arp_entry->ether_addr, packet->SHA);
+                new_arp_entry->ipaddr = packet->SPA;
+
+                list_add(&new_arp_entry->arp_table, &arp_table_head);
+
+                /* We have fulfilled the request, set the reply and remove
+                 * from the list of pending requests. */
+                arp_req->answer = new_arp_entry;
+                arp_req->finished = 1;
+
+                list_del(i);
+                break;
+            }
+        }
     }
     default:
         return;
