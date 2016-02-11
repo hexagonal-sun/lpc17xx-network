@@ -88,7 +88,7 @@ void irq_enet()
         }
 
         desc_idx += 1;
-        desc_idx %= LPC_EMAC->RxDescriptorNumber;
+        desc_idx %= DESC_LEN;
         LPC_EMAC->RxConsumeIndex = desc_idx;
     }
 
