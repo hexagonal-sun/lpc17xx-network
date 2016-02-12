@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 #define ETHER_ADDR_LEN 6
-#define OUR_IP_ADDRESS 0xC0A80002
+#define OUR_IP_ADDRESS 0xC0A80102
 
 /* Ethernet protocol. */
 typedef struct
