@@ -7,6 +7,7 @@
 
 void ether_rx_frame(void *frame, int frame_len)
 {
+    static int no_dropped_packets;
     ethernet_header *header = frame;
     void *payload = frame + sizeof(*header);
     int payload_len = frame_len - sizeof(*header);
