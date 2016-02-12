@@ -32,7 +32,7 @@ rx_status_t     __attribute__((aligned(8))) rx_status[DESC_LEN];
 /* Our ethernet address, set at init time. */
 uint8_t ether_addr[ETHER_ADDR_LEN];
 
-void phy_write(int reg, int writeval)
+static void phy_write(int reg, int writeval)
 {
     LPC_EMAC->MCMD = 0;
     LPC_EMAC->MADR = reg | (PHY_ADDR << 8);
@@ -40,7 +40,7 @@ void phy_write(int reg, int writeval)
     while (LPC_EMAC->MIND & 0x1) {};
 }
 
-unsigned short phy_read(unsigned char reg)
+static unsigned short phy_read(unsigned char reg)
 {
     LPC_EMAC->MCMD = 0x1;
     LPC_EMAC->MADR = reg | (PHY_ADDR << 8);
