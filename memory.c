@@ -41,7 +41,7 @@ static void memory_init()
     freelist = base;
 
     /* Determine how many BLOCK_SZ byte blocks there are in len. */
-    no_blocks = len << 3;        /* 8 = 1024 / BLOCK_SZ */
+    no_blocks = (len * 1024) / BLOCK_SZ;
 
     /* We will use the first block for the MM structure. */
     no_blocks--;
