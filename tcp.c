@@ -21,7 +21,7 @@ typedef struct
 
 LIST(tcb_head);
 
-static void tcp_swap_endian(tcp_header *header, tcp_pseudo *pheader)
+static void tcp_swap_endian(tcp_header *header)
 {
     swap_endian16(&header->source_port);
     swap_endian16(&header->dest_port);
@@ -30,6 +30,10 @@ static void tcp_swap_endian(tcp_header *header, tcp_pseudo *pheader)
     swap_endian16(&header->window_sz);
     swap_endian16(&header->checksum);
     swap_endian16(&header->urg_ptr);
+}
+
+static void tcp_swap_pseudo_endian(tcp_pseudo *pheader)
+{
     swap_endian32(&pheader->src);
     swap_endian32(&pheader->dst);
     swap_endian16(&pheader->length);
@@ -81,7 +85,8 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     pheader.proto = IP_PROTO_TCP;
     pheader.length = sizeof(header);
 
-    tcp_swap_endian(&header, &pheader);
+    tcp_swap_endian(&header);
+    tcp_swap_pseudo_endian(&pheader);
 
     tcp_compute_checksum(&header, &pheader);
 
