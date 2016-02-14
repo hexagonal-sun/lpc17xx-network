@@ -43,7 +43,7 @@ void ip4_rx_packet(void *packet, int packet_len)
     /* TODO: checksum checking. */
 
     header_len = header->ihl * 4;
-    payload = header + header_len;
+    payload = packet + header_len;
     payload_len = header->tot_length - header_len;
 
     /* Drop packet if ttl is zero. */
