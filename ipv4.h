@@ -18,5 +18,7 @@ typedef struct {
     uint32_t dst_ip;
 } __attribute__((packed)) ip4_header;
 
+void ip4_rx_packet(void *packet, int packet_len);
+
 void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                      uint16_t payload_len);

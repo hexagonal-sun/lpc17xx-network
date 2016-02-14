@@ -54,6 +54,11 @@ static void tcp_compute_checksum(tcp_header *header, tcp_pseudo *pheader)
     header->checksum = ~sum;
 }
 
+void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
+{
+    return;
+}
+
 /* Perform a 3-way handshake and establish a TCP connection. */
 tcb *tcp_connect(uint16_t port, uint32_t ip)
 {

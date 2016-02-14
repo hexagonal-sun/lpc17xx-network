@@ -10,6 +10,11 @@ static void udp_swap_endian(udp_header *header)
     swap_endian16(&header->length);
 }
 
+void udp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
+{
+    return;
+}
+
 void udp_xmit_packet(uint16_t dst_port, uint32_t dst_ip, void *payload,
                      int payload_len)
 {

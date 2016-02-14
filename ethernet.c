@@ -3,6 +3,7 @@
 #include "memory.h"
 #include "byteswap.h"
 #include "emac.h"
+#include "ipv4.h"
 #include <string.h>
 
 void ether_rx_frame(void *frame, int frame_len)
@@ -18,6 +19,9 @@ void ether_rx_frame(void *frame, int frame_len)
     {
     case ETHERTYPE_ARP:
         arp_process_packet(payload, payload_len);
+        break;
+    case ETHERTYPE_IP:
+        ip4_rx_packet(payload, payload_len);
         break;
     default:
         /* Drop the packet. */

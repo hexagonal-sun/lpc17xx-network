@@ -3,6 +3,8 @@
 #include "arp.h"
 #include "ethernet.h"
 #include "memory.h"
+#include "udp.h"
+#include "tcp.h"
 #include <string.h>
 
 #define DEFAULT_TTL 10
@@ -28,6 +30,41 @@ static void ip4_compute_checksum(ip4_header *header)
         sum = (sum & 0xffff) + (sum >> 16);
 
     header->header_checksum = ~sum;
+}
+
+void ip4_rx_packet(void *packet, int packet_len)
+{
+    ip4_header *header = (ip4_header *)packet;
+    void *payload;
+    int payload_len, header_len;
+
+    ip4_swap_endian(header);
+
+    /* TODO: checksum checking. */
+
+    header_len = header->ihl * 4;
+    payload = header + header_len;
+    payload_len = header->tot_length - header_len;
+
+    /* Drop packet if ttl is zero. */
+    if (!header->ttl)
+        return;
+
+    /* Drop packet if it is not addressed to us. */
+    if (header->dst_ip != OUR_IP_ADDRESS)
+        return;
+
+    switch (header->protocol)
+    {
+    case IP_PROTO_TCP:
+        tcp_rx_packet(header->src_ip, payload, payload_len);
+        break;
+    case IP_PROTO_UDP:
+        udp_rx_packet(header->src_ip, payload, payload_len);
+        break;
+    default:
+        return;
+    }
 }
 
 void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
