@@ -82,7 +82,6 @@ void irq_enet()
 
             /* We do, process it. */
             ether_rx_frame(current_frame, current_frame_len);
-            free_mem(current_frame);
             current_frame = 0;
             current_frame_len = 0;
         }
