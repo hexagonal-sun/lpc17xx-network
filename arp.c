@@ -101,9 +101,9 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     free_mem(arp_request);
 
-    while (!arp_p_req.finished) {
-        __asm__ volatile("wfi");
-    }
+    /* Volatile access as the finished flag is modified by the ISR. */
+    while (!((volatile struct arp_pending_request *)&arp_p_req)->finished)
+        __asm__ volatile("wfe");
 
     if (arp_p_req.timed_out)
         return 0;
