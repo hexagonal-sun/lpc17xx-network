@@ -96,10 +96,8 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     arp_swap_endian(arp_request);
 
-    ether_xmit_payload(broadcast_addr, ETHERTYPE_ARP, arp_request,
-                       sizeof(*arp_request));
-
-    free_mem(arp_request);
+    ether_tx(broadcast_addr, ETHERTYPE_ARP, arp_request,
+             sizeof(*arp_request));
 
     /* Volatile access as the finished flag is modified by the ISR. */
     while (!((volatile struct arp_pending_request *)&arp_p_req)->finished)
@@ -149,8 +147,7 @@ void arp_process_packet(void *payload, int payload_len)
 
         arp_swap_endian(resp);
 
-        ether_xmit_payload(packet->SHA, ETHERTYPE_ARP, resp,
-                           sizeof(*resp));
+        ether_tx(packet->SHA, ETHERTYPE_ARP, resp, sizeof(*resp));
         break;
     }
     case OPER_REPLY:

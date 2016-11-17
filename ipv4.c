@@ -97,8 +97,6 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
 
     memcpy(packet_buf + sizeof(*header), payload, payload_len);
 
-    ether_xmit_payload(dst_hw_addr, ETHERTYPE_IP, packet_buf,
+    ether_tx(dst_hw_addr, ETHERTYPE_IP, packet_buf,
                        packet_buf_len);
-
-    free_mem(header);
 }
