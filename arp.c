@@ -6,6 +6,7 @@
 #include "atomics.h"
 #include "list.h"
 #include "init.h"
+#include "wait.h"
 #include <string.h>
 
 #define ARP_TIMEOUT 250
@@ -99,9 +100,7 @@ uint8_t * resolve_address(uint32_t ip_address)
     ether_tx(broadcast_addr, ETHERTYPE_ARP, arp_request,
              sizeof(*arp_request));
 
-    /* Volatile access as the finished flag is modified by the ISR. */
-    while (!((volatile struct arp_pending_request *)&arp_p_req)->finished)
-        __asm__ volatile("wfe");
+    wait_for_volatile_condition(arp_p_req.finished);
 
     if (arp_p_req.timed_out)
         return 0;

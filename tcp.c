@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "tick.h"
 #include "init.h"
+#include "wait.h"
 #include <string.h>
 
 #define TCP_TIMEOUT 250
@@ -102,8 +103,7 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
 
     ip4_xmit_packet(IP_PROTO_TCP, ip, &header, sizeof(header));
 
-    while (!new_tcb->timed_out)
-        __asm__ volatile ("wfi");
+    wait_for_volatile_condition(!new_tcb->timed_out);
 
     if (new_tcb->timed_out)
         return NULL;
