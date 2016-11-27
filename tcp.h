@@ -38,6 +38,8 @@ typedef struct
     uint16_t timeout;
     uint16_t src_port;
     uint16_t dst_port;
+    uint16_t host_window_sz;
+    uint32_t dst_ip;
     uint8_t  decrement_timeout : 1;
     uint8_t  timed_out : 1;
     tcp_header *last_msg;

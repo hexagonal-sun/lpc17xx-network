@@ -59,30 +59,14 @@ static void tcp_compute_checksum(tcp_header *header, tcp_pseudo *pheader)
     header->checksum = ~sum;
 }
 
-void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
+static void tcp_tx(tcp_header header, uint32_t dest_ip)
 {
-    return;
-}
-
-/* Perform a 3-way handshake and establish a TCP connection. */
-tcb *tcp_connect(uint16_t port, uint32_t ip)
-{
-    tcp_header header;
     tcp_pseudo pheader;
-    tcb *new_tcb = get_mem(sizeof(*new_tcb));
 
-    memset(&header, 0, sizeof(header));
     memset(&pheader, 0, sizeof(pheader));
-    memset(new_tcb, 0, sizeof(*new_tcb));
-
-    header.source_port = 65355;
-    header.dest_port = port;
-    header.seq_n = 1024;
-    header.syn = 1;
-    header.data_offset = 5;
 
     pheader.src = OUR_IP_ADDRESS;
-    pheader.dst = ip;
+    pheader.dst = dest_ip;
     pheader.proto = IP_PROTO_TCP;
     pheader.length = sizeof(header);
 
@@ -91,6 +75,80 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
 
     tcp_compute_checksum(&header, &pheader);
 
+    ip4_xmit_packet(IP_PROTO_TCP, dest_ip, &header, sizeof(header));
+}
+
+void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
+{
+    tcb *i, *referenced_tcb = NULL;
+    tcp_header *incoming = (tcp_header *)payload;
+
+    tcp_swap_endian(incoming);
+
+    /* Find the tcb that this packet was for. */
+    list_for_each(i, &tcb_head, tcb_next)
+        if (incoming->dest_port == i->src_port) {
+            referenced_tcb = i;
+            break;
+        }
+
+    if (referenced_tcb == NULL)
+        return;
+
+    /* We've received a packet for this tcb, stop any timeout
+     * counters. */
+    referenced_tcb->decrement_timeout = 0;
+    referenced_tcb->timed_out = 0;
+    referenced_tcb->timeout = 0;
+
+    switch(referenced_tcb->state)
+    {
+    case SYN_SENT:
+        /* At this point the client could refuse the connection [RST,
+         * ACK] or accept the connection [SYN, ACK]. */
+        if (incoming->syn && incoming->ack) {
+            tcp_header response;
+
+            referenced_tcb->cur_seq_n++;
+            referenced_tcb->cur_ack_n = incoming->seq_n + 1;
+            referenced_tcb->host_window_sz = incoming->window_sz;
+
+            memset(&response, 0, sizeof(response));
+
+            response.source_port = referenced_tcb->src_port;
+            response.dest_port = referenced_tcb->dst_port;
+            response.seq_n = referenced_tcb->cur_seq_n;
+            response.ack_n = referenced_tcb->cur_ack_n;
+            response.ack = 1;
+            response.data_offset = 5;
+            response.window_sz = 10;
+
+            tcp_tx(response, referenced_tcb->dst_ip);
+
+            referenced_tcb->state = ESTABLISHED;
+            return;
+        }
+
+        referenced_tcb->state = CLOSED;
+        return;
+    }
+}
+
+/* Perform a 3-way handshake and establish a TCP connection. */
+tcb *tcp_connect(uint16_t port, uint32_t ip)
+{
+    tcp_header header;
+    tcb *new_tcb = get_mem(sizeof(*new_tcb));
+
+    memset(&header, 0, sizeof(header));
+    memset(new_tcb, 0, sizeof(*new_tcb));
+
+    header.source_port = 65355;
+    header.dest_port = port;
+    header.seq_n = 1024;
+    header.syn = 1;
+    header.data_offset = 5;
+
     new_tcb->cur_seq_n = 1024;
     new_tcb->state = SYN_SENT;
     new_tcb->timeout = TCP_TIMEOUT;
@@ -98,15 +156,20 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     new_tcb->src_port = 65355;
     new_tcb->dst_port = port;
     new_tcb->last_msg = &header;
+    new_tcb->dst_ip = ip;
 
     list_add(&new_tcb->tcb_next, &tcb_head);
 
-    ip4_xmit_packet(IP_PROTO_TCP, ip, &header, sizeof(header));
+    tcp_tx(header, ip);
 
-    wait_for_volatile_condition(!new_tcb->timed_out);
+    wait_for_volatile_condition(new_tcb->state != SYN_SENT);
 
-    if (new_tcb->timed_out)
-        return NULL;
+    if (new_tcb->state == ESTABLISHED)
+        return new_tcb;
+
+    list_del(&new_tcb->tcb_next);
+    free_mem(new_tcb);
+    return NULL;
 }
 
 void tcp_tick(void)
