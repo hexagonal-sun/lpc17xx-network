@@ -59,6 +59,18 @@ static void tcp_compute_checksum(tcp_header *header, tcp_pseudo *pheader)
     header->checksum = ~sum;
 }
 
+static void tcp_header_prepopulate(tcb *t, tcp_header *header)
+{
+    header->source_port = t->src_port;
+    header->dest_port = t->dst_port;
+    header->seq_n = t->cur_seq_n;
+    header->ack_n = t->cur_ack_n;
+    header->data_offset = 5;
+
+    /* TODO: keep track of the rx buffer and hence the window_sz. */
+    header->window_sz = 10;
+}
+
 static void tcp_tx(tcp_header header, uint32_t dest_ip)
 {
     tcp_pseudo pheader;
@@ -115,13 +127,9 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
 
             memset(&response, 0, sizeof(response));
 
-            response.source_port = referenced_tcb->src_port;
-            response.dest_port = referenced_tcb->dst_port;
-            response.seq_n = referenced_tcb->cur_seq_n;
-            response.ack_n = referenced_tcb->cur_ack_n;
+            tcp_header_prepopulate(referenced_tcb, &response);
+
             response.ack = 1;
-            response.data_offset = 5;
-            response.window_sz = 10;
 
             tcp_tx(response, referenced_tcb->dst_ip);
 
@@ -143,12 +151,6 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     memset(&header, 0, sizeof(header));
     memset(new_tcb, 0, sizeof(*new_tcb));
 
-    header.source_port = 65355;
-    header.dest_port = port;
-    header.seq_n = 1024;
-    header.syn = 1;
-    header.data_offset = 5;
-
     new_tcb->cur_seq_n = 1024;
     new_tcb->state = SYN_SENT;
     new_tcb->timeout = TCP_TIMEOUT;
@@ -157,6 +159,10 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     new_tcb->dst_port = port;
     new_tcb->last_msg = &header;
     new_tcb->dst_ip = ip;
+
+    tcp_header_prepopulate(new_tcb, &header);
+
+    header.syn = 1;
 
     list_add(&new_tcb->tcb_next, &tcb_head);
 
