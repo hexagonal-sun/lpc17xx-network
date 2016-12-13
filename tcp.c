@@ -9,6 +9,7 @@
 #include <string.h>
 
 #define TCP_TIMEOUT 250
+#define TCP_BUF_SZ 127
 
 typedef struct
 {
@@ -80,8 +81,7 @@ static void tcp_header_prepopulate(tcb *t, tcp_header *header)
     header->ack_n = t->cur_ack_n;
     header->data_offset = 5;
 
-    /* TODO: keep track of the rx buffer and hence the window_sz. */
-    header->window_sz = 10;
+    header->window_sz = circular_buf_cur_capacity(&t->rx_buf);
 }
 
 static void tcp_tx(tcp_header header, uint32_t dest_ip,
@@ -113,10 +113,11 @@ static void tcp_tx(tcp_header header, uint32_t dest_ip,
                     sizeof(header) + payload_len);
 }
 
-void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
+void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
 {
     tcb *i, *referenced_tcb = NULL;
     tcp_header *incoming = (tcp_header *)payload;
+    size_t data_len = payload_len - sizeof(tcp_header);
 
     tcp_swap_endian(incoming);
 
@@ -174,6 +175,22 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
 
             referenced_tcb->cur_seq_n = incoming->ack_n;
         }
+
+        if (data_len) {
+            uint8_t *data_buf = payload + sizeof(tcp_header);
+            tcp_header resp;
+
+            memset(&resp, 0, sizeof(resp));
+
+            circular_buf_push(&referenced_tcb->rx_buf, data_buf, data_len);
+
+            referenced_tcb->cur_ack_n += data_len;
+            tcp_header_prepopulate(referenced_tcb, &resp);
+
+            resp.ack = 1;
+
+            tcp_tx(resp, dst_ip, NULL, 0);
+        }
         break;
     }
 }
@@ -186,6 +203,8 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
 
     memset(&header, 0, sizeof(header));
     memset(new_tcb, 0, sizeof(*new_tcb));
+
+    circular_buf_init(&(new_tcb->rx_buf), TCP_BUF_SZ);
 
     new_tcb->cur_seq_n = 1024;
     new_tcb->state = SYN_SENT;
@@ -229,6 +248,24 @@ void tcp_tx_data(tcb *connection, void *data, size_t len)
     tcp_tx(header, connection->dst_ip, data, len);
 
     wait_for_volatile_condition(!connection->unacked_byte_count);
+}
+
+void tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
+{
+    while (len) {
+        size_t no_bytes_to_copy, bytes_in_buf;
+
+        wait_for_volatile_condition(
+            circular_buf_cur_usage(&connection->rx_buf) != 0);
+
+        bytes_in_buf = circular_buf_cur_usage(&connection->rx_buf);
+        no_bytes_to_copy = bytes_in_buf > len ? len : bytes_in_buf;
+
+        circular_buf_pop(&connection->rx_buf, dst_buf, no_bytes_to_copy);
+
+        len -= no_bytes_to_copy;
+        dst_buf += no_bytes_to_copy;
+    }
 }
 
 void tcp_tick(void)

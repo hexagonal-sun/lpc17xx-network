@@ -1,5 +1,6 @@
 #pragma once
 #include "list.h"
+#include "cbuf.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -36,6 +37,7 @@ typedef struct
     uint32_t cur_seq_n;
     uint32_t cur_ack_n;
     uint32_t unacked_byte_count;
+    circular_buf rx_buf;
     enum tcp_state state;
     uint16_t timeout;
     uint16_t src_port;
@@ -55,6 +57,9 @@ tcb *tcp_connect(uint16_t port, uint32_t ip);
 
 /* Send data down an already-established TCP connection. */
 void tcp_tx_data(tcb *connection, void *data, size_t len);
+
+/* Receive data down an already-established TCP connection. */
+void tcp_rx_data(tcb *connection, void *dst_buf, size_t len);
 
 #define for_each_tcb(pos)                       \
     list_for_each((pos), &tcb_head, tcb_next)
