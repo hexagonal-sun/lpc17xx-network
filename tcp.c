@@ -40,23 +40,36 @@ static void tcp_swap_pseudo_endian(tcp_pseudo *pheader)
     swap_endian16(&pheader->length);
 }
 
-static void tcp_compute_checksum(tcp_header *header, tcp_pseudo *pheader)
+static void tcp_compute_checksum(tcp_header *header, tcp_pseudo *pheader,
+                                 void *payload_data, size_t payload_len)
 {
-    uint16_t *x = (uint16_t *)header;
-    uint16_t *px = (uint16_t *)pheader;
+    void *buf;
+    uint16_t *x;
+    size_t buf_sz = sizeof(*header) + sizeof(*pheader) + payload_len;
     uint32_t sum = 0;
     int i;
 
-    for (i = 0; i < sizeof(tcp_pseudo) / 2; i++)
-        sum += px[i];
+    if (buf_sz % 2)
+        buf_sz += 1;
 
-    for (i = 0; i < sizeof(tcp_header) / 2; i++)
+    buf = get_mem(buf_sz);
+    memset(buf, 0, buf_sz);
+
+    memcpy(buf, pheader, sizeof(*pheader));
+    memcpy(buf + sizeof(*pheader), header, sizeof(*header));
+    memcpy(buf + sizeof(*pheader) + sizeof(*header), payload_data, payload_len);
+
+    x = buf;
+
+    for (i = 0; i < buf_sz / 2; i++)
         sum += x[i];
 
     while (sum >> 16)
         sum = (sum & 0xffff) + (sum >> 16);
 
     header->checksum = ~sum;
+
+    free_mem(buf);
 }
 
 static void tcp_header_prepopulate(tcb *t, tcp_header *header)
@@ -71,23 +84,33 @@ static void tcp_header_prepopulate(tcb *t, tcp_header *header)
     header->window_sz = 10;
 }
 
-static void tcp_tx(tcp_header header, uint32_t dest_ip)
+static void tcp_tx(tcp_header header, uint32_t dest_ip,
+                   void *payload, size_t payload_len)
 {
     tcp_pseudo pheader;
+    void *buf = &header;
 
     memset(&pheader, 0, sizeof(pheader));
 
     pheader.src = OUR_IP_ADDRESS;
     pheader.dst = dest_ip;
     pheader.proto = IP_PROTO_TCP;
-    pheader.length = sizeof(header);
+    pheader.length = sizeof(header) + payload_len;
 
     tcp_swap_endian(&header);
     tcp_swap_pseudo_endian(&pheader);
 
-    tcp_compute_checksum(&header, &pheader);
+    tcp_compute_checksum(&header, &pheader, payload, payload_len);
 
-    ip4_xmit_packet(IP_PROTO_TCP, dest_ip, &header, sizeof(header));
+    if (payload && payload_len) {
+        buf = get_mem(sizeof(header) + payload_len);
+
+        memcpy(buf, &header, sizeof(header));
+        memcpy(buf + sizeof(header), payload, payload_len);
+    }
+
+    ip4_xmit_packet(IP_PROTO_TCP, dest_ip, buf,
+                    sizeof(header) + payload_len);
 }
 
 void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
@@ -131,7 +154,7 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
 
             response.ack = 1;
 
-            tcp_tx(response, referenced_tcb->dst_ip);
+            tcp_tx(response, referenced_tcb->dst_ip, NULL, 0);
 
             referenced_tcb->state = ESTABLISHED;
             return;
@@ -139,6 +162,19 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_tvb)
 
         referenced_tcb->state = CLOSED;
         return;
+
+    case ESTABLISHED:
+
+        if (incoming->ack) {
+            int no_acked_bytes = incoming->ack_n -
+                referenced_tcb->cur_seq_n;
+
+            if (no_acked_bytes > 0)
+                referenced_tcb->unacked_byte_count -= no_acked_bytes;
+
+            referenced_tcb->cur_seq_n = incoming->ack_n;
+        }
+        break;
     }
 }
 
@@ -166,7 +202,7 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
 
     list_add(&new_tcb->tcb_next, &tcb_head);
 
-    tcp_tx(header, ip);
+    tcp_tx(header, ip, NULL, 0);
 
     wait_for_volatile_condition(new_tcb->state != SYN_SENT);
 
@@ -176,6 +212,23 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     list_del(&new_tcb->tcb_next);
     free_mem(new_tcb);
     return NULL;
+}
+
+void tcp_tx_data(tcb *connection, void *data, size_t len)
+{
+    tcp_header header;
+
+    memset(&header, 0, sizeof(header));
+
+    tcp_header_prepopulate(connection, &header);
+
+    header.ack = 1;
+
+    connection->unacked_byte_count += len;
+
+    tcp_tx(header, connection->dst_ip, data, len);
+
+    wait_for_volatile_condition(!connection->unacked_byte_count);
 }
 
 void tcp_tick(void)
