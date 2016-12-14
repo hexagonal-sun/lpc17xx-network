@@ -164,6 +164,21 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
         referenced_tcb->state = CLOSED;
         return;
 
+    case LISTEN:
+        if (incoming->syn) {
+            referenced_tcb->dst_ip = dst_ip;
+            referenced_tcb->cur_ack_n = incoming->seq_n + 1;
+            referenced_tcb->dst_port = incoming->source_port;
+            referenced_tcb->state = SYN_RECEIVED;
+        }
+        break;
+
+    case SYN_RECEIVED:
+        if (incoming->ack) {
+            referenced_tcb->cur_seq_n = incoming->ack_n;
+            referenced_tcb->state = ESTABLISHED;
+        }
+        break;
     case ESTABLISHED:
 
         if (incoming->ack) {
@@ -231,6 +246,40 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
     list_del(&new_tcb->tcb_next);
     free_mem(new_tcb);
     return NULL;
+}
+
+tcb *tcp_listen(uint16_t port)
+{
+    tcp_header header, resp;
+    tcb *new_tcb = get_mem(sizeof(*new_tcb));
+
+    memset(&header, 0, sizeof(header));
+    memset(new_tcb, 0, sizeof(*new_tcb));
+
+    circular_buf_init(&(new_tcb->rx_buf), TCP_BUF_SZ);
+
+    new_tcb->cur_seq_n = 1024;
+    new_tcb->state = LISTEN;
+    new_tcb->src_port = port;
+    new_tcb->dst_port = 0;
+    new_tcb->dst_ip = 0;
+
+    list_add(&new_tcb->tcb_next, &tcb_head);
+
+    wait_for_volatile_condition(new_tcb->state == SYN_RECEIVED);
+
+    memset(&resp, 0, sizeof(resp));
+
+    tcp_header_prepopulate(new_tcb, &resp);
+
+    resp.syn = 1;
+    resp.ack = 1;
+
+    tcp_tx(resp, new_tcb->dst_ip, NULL, 0);
+
+    wait_for_volatile_condition(new_tcb->state == ESTABLISHED);
+
+    return new_tcb;
 }
 
 void tcp_tx_data(tcb *connection, void *data, size_t len)
