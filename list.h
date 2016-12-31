@@ -39,6 +39,14 @@ int list_empty(list *list);
          &pos->member != (head);                                 \
          pos = list_entry(pos->member.next, typeof(*pos), member))
 
+#define list_pop(variable, head, member)                                \
+    {if (list_empty(head))                                              \
+            (variable) = NULL;                                          \
+     else {                                                          \
+         variable = list_entry((head)->next, typeof(*variable), member); \
+         list_del(&(variable->member));                              \
+     }}
+
 #define list_for_each_safe(pos, n, head)                                \
     for (pos = (head)->next, n = pos->next;                             \
          pos != (head);                                                 \
