@@ -115,7 +115,8 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
 {
     tcb *i, *referenced_tcb = NULL;
     tcp_header *incoming = (tcp_header *)payload;
-    size_t data_len = payload_len - sizeof(tcp_header);
+    size_t tcp_header_sz = incoming->data_offset * 4;
+    size_t data_len = payload_len - tcp_header_sz;
 
     tcp_swap_endian(incoming);
 
@@ -126,8 +127,35 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             break;
         }
 
-    if (referenced_tcb == NULL)
+    if (referenced_tcb == NULL) {
+        tcp_header response;
+
+        /* We couldn't find a TCB for the referenced connection.
+         * which is equivalent to the connection being in a CLOSED
+         * state. */
+        if (incoming->rst)
+            return;
+
+        memset(&response, 0, sizeof(response));
+
+        response.rst = 1;
+        response.data_offset = 5;
+        response.dest_port = incoming->source_port;
+        response.source_port = incoming->dest_port;
+
+        if (incoming->syn)
+            data_len += 1;
+
+        if (incoming->ack)
+            response.seq_n = incoming->ack_n;
+        else {
+            response.ack_n = incoming->seq_n + data_len;
+            response.ack = 1;
+        }
+
+        tcp_tx(response, dst_ip, NULL, 0);
         return;
+    }
 
     /* We've received a packet for this tcb, stop any timeout
      * counters. */
