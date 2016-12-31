@@ -1,6 +1,7 @@
 #include "atomics.h"
 #include "lpc17xx.h"
 #include "tick.h"
+#include "process.h"
 #include "init.h"
 
 LIST(tick_work);
@@ -24,6 +25,9 @@ void irq_timer0(void)
 
     /* Acknowledge the interrupt. */
     LPC_TIM0->IR = 0x1;
+
+    /* Raise a PendSV for context switch. */
+    LPC_SCB->ICSR |= ICSR_PENDSVSET_MASK;
 }
 
 void tick_add_work_fn(struct tick_work_q *new_work)

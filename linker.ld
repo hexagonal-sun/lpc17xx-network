@@ -24,6 +24,13 @@ SECTIONS {
         *(.initcall_0*)
         _einitcalls = .;
     } >rom
+
+    .threads : {
+        _sthreads = .;
+        *(.threads*)
+        _ethreads = .;
+    }>rom
+
     _etext = .;
 
     .data : {

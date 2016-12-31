@@ -1,9 +1,10 @@
 #include "udp.h"
 #include "tcp.h"
+#include "process.h"
 #include <string.h>
 
-int main(void) {
     char *str = "Hello, UDP!\n";
+void main(void) {
     void *tcp_connection;
 
     tcp_connection = tcp_connect(5757, 0xc0a80476);
@@ -14,3 +15,4 @@ int main(void) {
         __asm__("wfi");
     }
 }
+thread(main);

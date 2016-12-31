@@ -3,7 +3,6 @@
 #include "irq.h"
 #include <stdint.h>
 
-void main();
 
 extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
 extern initcall_t _sinitcalls, _einitcalls;
@@ -85,9 +84,6 @@ void __attribute__((noreturn)) _start()
     call_initcalls();
 
     __irq_enable();
-
-    /* Call main. */
-    main();
 
     __asm__ volatile ("b .");
     __builtin_unreachable();
