@@ -5,9 +5,34 @@
 #include "memory.h"
 #include "udp.h"
 #include "tcp.h"
+#include "process.h"
+#include "atomics.h"
+#include "irq.h"
 #include <string.h>
 
 #define DEFAULT_TTL 10
+
+typedef struct
+{
+    void *packet;
+    uint16_t packet_len;
+    list packets;
+} ip4_rx_q_t;
+
+typedef struct
+{
+    uint8_t protocol;
+    uint32_t dst_ip;
+    void *payload;
+    uint16_t payload_len;
+    list next;
+} ip4_tx_q_t;
+
+static LIST(ip4_rx_queue);
+static mutex_t ip4_rx_queue_lock = 0;
+
+static LIST(ip4_tx_queue);
+static mutex_t ip4_tx_queue_lock = 0;
 
 static void ip4_swap_endian(ip4_header *iphdr)
 {
@@ -33,6 +58,21 @@ static void ip4_compute_checksum(ip4_header *header)
 }
 
 void ip4_rx_packet(void *packet, int packet_len)
+{
+    ip4_rx_q_t *new_packet = get_mem(sizeof(*new_packet));
+
+    void *our_packet = get_mem(packet_len);
+    memcpy(our_packet, packet, packet_len);
+
+    new_packet->packet = our_packet;
+    new_packet->packet_len = packet_len;
+
+    get_lock(&ip4_rx_queue_lock);
+    list_add(&new_packet->packets, &ip4_rx_queue);
+    release_lock(&ip4_rx_queue_lock);
+}
+
+static void ip4_do_rx_packet(void *packet, int packet_len)
 {
     ip4_header *header = (ip4_header *)packet;
     void *payload;
@@ -70,6 +110,21 @@ void ip4_rx_packet(void *packet, int packet_len)
 void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                      uint16_t payload_len)
 {
+    ip4_tx_q_t *new_packet = get_mem(sizeof(*new_packet));
+
+    new_packet->protocol = protocol;
+    new_packet->dst_ip = dst_ip;
+    new_packet->payload = payload;
+    new_packet->payload_len = payload_len;
+
+    get_lock(&ip4_tx_queue_lock);
+    list_add(&new_packet->next, &ip4_tx_queue);
+    release_lock(&ip4_tx_queue_lock);
+}
+
+static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
+                               uint16_t payload_len)
+{
     void *packet_buf;
     int packet_buf_len = sizeof(ip4_header) + payload_len;
     ip4_header *header;
@@ -100,3 +155,50 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
     ether_tx(dst_hw_addr, ETHERTYPE_IP, packet_buf,
                        packet_buf_len);
 }
+
+static void ip4_task(void)
+{
+    while (1) {
+        ip4_rx_q_t *rx_packet;
+        ip4_tx_q_t *tx_packet;
+
+        do {
+            __irq_disable();
+            if (try_lock(&ip4_rx_queue_lock)) {
+                list_pop(rx_packet, &ip4_rx_queue, packets);
+
+                release_lock(&ip4_rx_queue_lock);
+            } else
+                rx_packet = NULL;
+            __irq_enable();
+
+            if (rx_packet) {
+                ip4_do_rx_packet(rx_packet->packet, rx_packet->packet_len);
+
+                free_mem(rx_packet->packet);
+                free_mem(rx_packet);
+            }
+        } while (rx_packet);
+
+        do {
+            __irq_disable();
+            if (try_lock(&ip4_tx_queue_lock)) {
+                list_pop(tx_packet, &ip4_tx_queue, next);
+
+                release_lock(&ip4_tx_queue_lock);
+            } else
+                tx_packet = NULL;
+            __irq_enable();
+
+            if (tx_packet) {
+
+                ip4_do_xmit_packet(tx_packet->protocol, tx_packet->dst_ip,
+                                   tx_packet->payload, tx_packet->payload_len);
+
+                free_mem(tx_packet->payload);
+                free_mem(tx_packet);
+            }
+        } while (tx_packet);
+    }
+}
+thread(ip4_task);

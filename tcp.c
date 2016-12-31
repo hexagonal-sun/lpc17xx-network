@@ -102,12 +102,10 @@ static void tcp_tx(tcp_header header, uint32_t dest_ip,
 
     tcp_compute_checksum(&header, &pheader, payload, payload_len);
 
-    if (payload && payload_len) {
-        buf = get_mem(sizeof(header) + payload_len);
+    buf = get_mem(sizeof(header) + payload_len);
 
-        memcpy(buf, &header, sizeof(header));
-        memcpy(buf + sizeof(header), payload, payload_len);
-    }
+    memcpy(buf, &header, sizeof(header));
+    memcpy(buf + sizeof(header), payload, payload_len);
 
     ip4_xmit_packet(IP_PROTO_TCP, dest_ip, buf,
                     sizeof(header) + payload_len);
