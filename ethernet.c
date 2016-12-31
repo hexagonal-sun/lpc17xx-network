@@ -6,8 +6,10 @@
 #include "emac.h"
 #include "ipv4.h"
 #include "list.h"
+#include "irq.h"
 #include "tick.h"
 #include "init.h"
+#include "process.h"
 #include <string.h>
 
 struct ether_rx_q_t
@@ -36,7 +38,10 @@ void ether_rx_frame(void *frame, int frame_len)
 {
     struct ether_rx_q_t *newPacket = get_mem(sizeof(*newPacket));
 
-    newPacket->packet = frame;
+    void *our_frame = get_mem(frame_len);
+    memcpy(our_frame, frame, frame_len);
+
+    newPacket->packet = our_frame;
     newPacket->packet_len = frame_len;
 
     get_lock(&ether_rx_queue_lock);
@@ -81,8 +86,6 @@ static void ether_process_frame(void *frame, int frame_len)
         /* Drop the packet. */
         no_dropped_packets++;
     }
-
-    free_mem(frame);
 }
 
 static void ether_xmit_payload(uint8_t dhost[ETHER_ADDR_LEN],
@@ -117,51 +120,49 @@ void ethernet_mac_copy(uint8_t *dst, uint8_t *src)
     memcpy(dst, src, ETHER_ADDR_LEN);
 }
 
-static void ether_tick()
+static void ether_task(void)
 {
-    list *i, *tmp;
+    while (1) {
+        struct ether_rx_q_t *rx_packet;
+        struct ether_tx_q_t *tx_packet;
 
-    if (try_lock(&ether_rx_queue_lock))
-    {
-        list_for_each_safe(i, tmp, &ether_rx_queue)
-        {
-            struct ether_rx_q_t *packet =
-                list_entry(i, struct ether_rx_q_t, packets);
+        do {
+            __irq_disable();
+            if (try_lock(&ether_rx_queue_lock)) {
+                list_pop(rx_packet, &ether_rx_queue, packets);
 
-            ether_process_frame(packet->packet, packet->packet_len);
+                release_lock(&ether_rx_queue_lock);
+            } else
+                rx_packet = NULL;
+            __irq_enable();
 
-            list_del(i);
-            free_mem(packet);
-            free_mem(i);
-        }
-        release_lock(&ether_rx_queue_lock);
-    }
+            if (rx_packet) {
+                ether_process_frame(rx_packet->packet, rx_packet->packet_len);
 
-    if (try_lock(&ether_tx_queue_lock))
-    {
-        list_for_each_safe(i, tmp, &ether_tx_queue)
-        {
-            struct ether_tx_q_t *packet =
-                list_entry(i, struct ether_tx_q_t, next);
+                free_mem(rx_packet->packet);
+                free_mem(rx_packet);
+            }
+        } while (rx_packet);
 
-            ether_xmit_payload(packet->dhost, packet->ether_type,
-                               packet->payload, packet->payload_len);
+        do {
+            __irq_disable();
+            if (try_lock(&ether_tx_queue_lock)) {
+                list_pop(tx_packet, &ether_tx_queue, next);
 
-            list_del(i);
-            free_mem(packet->payload);
-            free_mem(packet);
-            free_mem(i);
-        }
-        release_lock(&ether_tx_queue_lock);
+                release_lock(&ether_tx_queue_lock);
+            } else
+                tx_packet = NULL;
+            __irq_enable();
+
+            if (tx_packet) {
+
+                ether_xmit_payload(tx_packet->dhost, tx_packet->ether_type,
+                                   tx_packet->payload, tx_packet->payload_len);
+
+                free_mem(tx_packet->payload);
+                free_mem(tx_packet);
+            }
+        } while (tx_packet);
     }
 }
-
-static struct tick_work_q ether_tick_work = {
-    .tick_fn = ether_tick
-};
-
-void ether_init(void)
-{
-    tick_add_work_fn(&ether_tick_work);
-}
-initcall(ether_init);
+thread(ether_task);
