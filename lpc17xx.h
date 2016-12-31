@@ -211,6 +211,32 @@ typedef struct
     uint32_t STIR;
 } lpc_core_nvic_t;
 
+typedef struct
+{
+    uint32_t CPUID;
+    uint32_t ICSR;
+    uint32_t VTOR;
+    uint32_t AIRCR;
+    uint32_t SCR;
+    uint32_t CCR;
+    uint8_t  SHP[12];
+    uint32_t SHCSR;
+    uint32_t CFSR;
+    uint32_t HFSR;
+    uint32_t DFSR;
+    uint32_t MMFAR;
+    uint32_t BFAR;
+    uint32_t AFSR;
+    uint32_t PFR[2];
+    uint32_t DFR;
+    uint32_t ADR;
+    uint32_t MMFR[4];
+    uint32_t ISAR[5];
+} lpc_core_scb_t;
+
+#define ICSR_PENDSVSET_MASK (1 << 28)
+#define SCR_SLEEPONEXIT_MASK (1 << 1)
+
 extern volatile lpc_periph_emac_t   * const LPC_EMAC;
 extern volatile lpc_periph_sc_t     * const LPC_SC;
 extern volatile lpc_periph_pincon_t * const LPC_PINCON;
@@ -219,3 +245,4 @@ extern volatile lpc_periph_timer_t  * const LPC_TIM1;
 extern volatile lpc_periph_timer_t  * const LPC_TIM2;
 extern volatile lpc_periph_timer_t  * const LPC_TIM3;
 extern volatile lpc_core_nvic_t     * const LPC_NVIC;
+extern volatile lpc_core_scb_t      * const LPC_SCB;

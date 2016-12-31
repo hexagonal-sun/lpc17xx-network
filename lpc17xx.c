@@ -8,3 +8,4 @@ volatile lpc_periph_timer_t  * const LPC_TIM1   = (lpc_periph_timer_t *)0x400080
 volatile lpc_periph_timer_t  * const LPC_TIM2   = (lpc_periph_timer_t *)0x40090000;
 volatile lpc_periph_timer_t  * const LPC_TIM3   = (lpc_periph_timer_t *)0x40094000;
 volatile lpc_core_nvic_t     * const LPC_NVIC   = (lpc_core_nvic_t *)0xE000E100;
+volatile lpc_core_scb_t      * const LPC_SCB    = (lpc_core_scb_t  *)0xE000ED00;
