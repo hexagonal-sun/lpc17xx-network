@@ -17,7 +17,7 @@ vectors:
 	irq_handler	irq_memmanage
 	irq_handler	irq_busfault
 	irq_handler	irq_usagefault
-	.word		program_checksum
+	.word		0
 	.word		0
 	.word		0
 	.word		0

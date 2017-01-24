@@ -3,16 +3,18 @@
 #include "process.h"
 #include <string.h>
 
-    char *str = "Hello, UDP!\n";
+volatile uint8_t *UART = (uint8_t *)0x48020000;
+
+void _puts(const char *str)
+{
+    while (*str != '\0')
+        *UART = *(str++);
+}
+
+const char *hw = "Hello, World!";
+
 void main(void) {
-    void *tcp_connection;
-
-    tcp_connection = tcp_connect(5757, 0xc0a80476);
-
-    tcp_tx_data(tcp_connection, str, strlen(str));
-
-    while (1) {
-        __asm__("wfi");
-    }
+    _puts(hw);
+    __asm__ volatile ("b .");
 }
 thread(main);

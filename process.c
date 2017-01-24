@@ -45,7 +45,7 @@ static void process_init(void)
 
     /* To kick off, we want the PSP to be NULL, so that irq_pendsv
      * doesn't attempt to stack values of an empty task. */
-    asm volatile("msr psp, %0" : : "r"(zero));
+//    asm volatile("msr psp, %0" : : "r"(zero));
 }
 initcall(process_init);
 
