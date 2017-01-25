@@ -21,19 +21,19 @@ static inline int addr_2_idx(void *addr)
 typedef struct
 {
     void *base;
-    uint16_t len;
+    uint32_t len;
 } memory_region_t;
 
 memory_region_t memory_regions [] =
 {
     {
-        .base = (void *)0x2007C000,
-        .len = 16
+        .base = (void *)0x90000000,
+        .len = 1024 * 1024
     }
 };
 
 /* Length is in Kilobytes. */
-static void memory_init()
+void memory_init()
 {
     int i, blocks_used_by_freelist, len = memory_regions[0].len;
     void *base = memory_regions[0].base;
@@ -58,8 +58,6 @@ static void memory_init()
 
     pm_base = base;
 }
-early_initcall(memory_init);
-
 
 void *get_mem(int len)
 {

@@ -32,6 +32,8 @@ void __attribute__((noreturn)) _start()
     for (dst = &_sbss; dst < &_ebss; dst++)
         *dst = 0;
 
+    memory_init();
+
     /* call_initcalls(); */
 
     /* __irq_enable(); */
