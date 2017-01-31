@@ -1,13 +1,13 @@
 MEMORY {
-   ram  (RWX)  : ORIGIN = 0x82000000, LENGTH = 2048M
+   ram  (RWX)  : ORIGIN = 0xff0C0000, LENGTH = 15M
 }
 
 _sram  = ORIGIN(ram);
 _eram  = _sram + LENGTH(ram);
 
 SECTIONS {
-    _stext = .;
     .text : {
+        _stext = .;
         *(.start_text*)
         *(.text*)
         *(.rodata)

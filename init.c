@@ -2,7 +2,7 @@
 #include "lpc17xx.h"
 #include "irq.h"
 #include <stdint.h>
-
+#include <stddef.h>
 
 extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
 extern initcall_t _sinitcalls, _einitcalls;
@@ -19,7 +19,9 @@ static void call_initcalls()
 
 /* Called straight after reset.  Copy over the data, zero the BSS and
  * call main. */
-void __attribute__((noreturn)) _start()
+void __attribute__((noreturn)) _start(void *phys_addr,
+                                      void *virt_addr,
+                                      void *pgtb_addr)
 {
     uint8_t *src = &_etext;
     uint8_t *dst = &_sdata;
