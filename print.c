@@ -96,7 +96,13 @@ void printl(const char *fmt, ...)
                 _puts(str);
                 break;
             }
-            break;
+            case 'p':
+            {
+                const uint32_t p = va_arg(args, uint32_t);
+                _puts("0x");
+                print_number(p, 16, 'A', 1);
+                break;
+            }
             }
         } else
             _putc(*fmt);
