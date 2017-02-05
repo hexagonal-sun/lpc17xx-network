@@ -19,46 +19,39 @@ static void _putc(const char c)
     *UART = c;
 }
 
-static void print_number(int64_t num, uint8_t radix,
+static void print_digits(int64_t num, uint8_t radix,
                          char hex_base)
 {
-    struct dig
-    {
-        char c;
-        struct dig *next;
-    } *dig_head;
+    uint8_t digit;
+    char char_to_print;
 
+    /* Base case. */
+    if (!num)
+        return;
+
+    digit = num % radix;
+
+    char_to_print = digit > 9 ? hex_base + (digit - 10) : '0' + digit;
+    print_digits(num / radix, radix, hex_base);
+    _putc(char_to_print);
+}
+
+static void print_number(int64_t num, uint8_t radix,
+                         char hex_base, int is_unsigned)
+{
     if (num == 0) {
         _putc('0');
         return;
     }
 
-    /* Handle negative numbers. */
-    if (num < 0) {
-        _putc('-');
-        num = -num;
-    }
+    if (!is_unsigned)
+        /* Handle negative numbers. */
+        if (num < 0) {
+            _putc('-');
+            num = -num;
+        }
 
-    dig_head = NULL;
-
-    while (num != 0) {
-        int digit = num % radix;
-        struct dig *new_dig = get_mem(sizeof(*new_dig));
-
-        new_dig->c = digit > 9 ? hex_base + (digit - 10) : '0' + digit;
-        new_dig->next = dig_head;
-        dig_head = new_dig;
-
-        num /= radix;
-    }
-
-    while (dig_head)
-    {
-        struct dig *old_dig = dig_head;
-        _putc(dig_head->c);
-        dig_head = dig_head->next;
-        free_mem(old_dig);
-    }
+    print_digits(num, radix, hex_base);
 }
 
 static void _puts(const char *str)
@@ -82,19 +75,19 @@ void printl(const char *fmt, ...)
             case 'd':
             {
                 int tmp = va_arg(args, int);
-                print_number(tmp, 10, 'a');
+                print_number(tmp, 10, 'a', 0);
                 break;
             }
             case 'x':
             {
                 int tmp = va_arg(args, int);
-                print_number(tmp, 16, 'a');
+                print_number(tmp, 16, 'a', 1);
                 break;
             }
             case 'X':
             {
                 int tmp = va_arg(args, int);
-                print_number(tmp, 16, 'A');
+                print_number(tmp, 16, 'A', 1);
                 break;
             }
             case 's':
