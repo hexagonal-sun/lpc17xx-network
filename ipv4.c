@@ -8,6 +8,7 @@
 #include "process.h"
 #include "atomics.h"
 #include "irq.h"
+#include "wait.h"
 #include <string.h>
 
 #define DEFAULT_TTL 10
@@ -29,9 +30,11 @@ typedef struct
 } ip4_tx_q_t;
 
 static LIST(ip4_rx_queue);
+static WAITQUEUE(ip4_rx_waitq);
 static mutex_t ip4_rx_queue_lock = 0;
 
 static LIST(ip4_tx_queue);
+static WAITQUEUE(ip4_tx_waitq);
 static mutex_t ip4_tx_queue_lock = 0;
 
 static void ip4_swap_endian(ip4_header *iphdr)
@@ -70,6 +73,8 @@ void ip4_rx_packet(void *packet, int packet_len)
     get_lock(&ip4_rx_queue_lock);
     list_add(&new_packet->packets, &ip4_rx_queue);
     release_lock(&ip4_rx_queue_lock);
+
+    waitqueue_wakeup(&ip4_rx_waitq);
 }
 
 static void ip4_do_rx_packet(void *packet, int packet_len)
@@ -120,6 +125,8 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
     get_lock(&ip4_tx_queue_lock);
     list_add(&new_packet->next, &ip4_tx_queue);
     release_lock(&ip4_tx_queue_lock);
+
+    waitqueue_wakeup(&ip4_tx_waitq);
 }
 
 static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
@@ -156,49 +163,57 @@ static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                        packet_buf_len);
 }
 
-static void ip4_task(void)
+static void ip4_rx_task(void)
 {
     while (1) {
-        ip4_rx_q_t *rx_packet;
-        ip4_tx_q_t *tx_packet;
+        ip4_rx_q_t *rxd_pkt;
 
-        do {
-            __irq_disable();
-            if (try_lock(&ip4_rx_queue_lock)) {
-                list_pop(rx_packet, &ip4_rx_queue, packets);
+        wait_for_volatile_condition((!list_empty(&ip4_rx_queue)),
+                                    ip4_rx_waitq);
 
-                release_lock(&ip4_rx_queue_lock);
-            } else
-                rx_packet = NULL;
-            __irq_enable();
+        __irq_disable();
+        if (try_lock(&ip4_rx_queue_lock)) {
+            list_pop(rxd_pkt, &ip4_rx_queue, packets);
 
-            if (rx_packet) {
-                ip4_do_rx_packet(rx_packet->packet, rx_packet->packet_len);
+            release_lock(&ip4_rx_queue_lock);
+        } else
+            rxd_pkt = NULL;
+        __irq_enable();
 
-                free_mem(rx_packet->packet);
-                free_mem(rx_packet);
-            }
-        } while (rx_packet);
+        if (rxd_pkt) {
+            ip4_do_rx_packet(rxd_pkt->packet, rxd_pkt->packet_len);
 
-        do {
-            __irq_disable();
-            if (try_lock(&ip4_tx_queue_lock)) {
-                list_pop(tx_packet, &ip4_tx_queue, next);
-
-                release_lock(&ip4_tx_queue_lock);
-            } else
-                tx_packet = NULL;
-            __irq_enable();
-
-            if (tx_packet) {
-
-                ip4_do_xmit_packet(tx_packet->protocol, tx_packet->dst_ip,
-                                   tx_packet->payload, tx_packet->payload_len);
-
-                free_mem(tx_packet->payload);
-                free_mem(tx_packet);
-            }
-        } while (tx_packet);
+            free_mem(rxd_pkt->packet);
+            free_mem(rxd_pkt);
+        }
     }
 }
-thread(ip4_task);
+thread(ip4_rx_task)
+
+static void ip4_tx_task(void)
+{
+    while (1) {
+        ip4_tx_q_t *tx_pkt;
+
+        wait_for_volatile_condition((!list_empty(&ip4_tx_queue)),
+                                    ip4_tx_waitq);
+
+        __irq_disable();
+        if (try_lock(&ip4_tx_queue_lock)) {
+            list_pop(tx_pkt, &ip4_tx_queue, next);
+
+            release_lock(&ip4_tx_queue_lock);
+        } else
+            tx_pkt = NULL;
+        __irq_enable();
+
+        if (tx_pkt) {
+            ip4_do_xmit_packet(tx_pkt->protocol, tx_pkt->dst_ip,
+                               tx_pkt->payload,  tx_pkt->payload_len);
+
+            free_mem(tx_pkt->payload);
+            free_mem(tx_pkt);
+        }
+    }
+}
+thread(ip4_tx_task)
