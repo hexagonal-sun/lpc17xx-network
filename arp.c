@@ -11,6 +11,8 @@
 
 #define ARP_TIMEOUT 250
 
+static WAITQUEUE(arp_waitqueue);
+
 struct arp_entry
 {
     uint8_t ether_addr[ETHER_ADDR_LEN];
@@ -100,7 +102,7 @@ uint8_t * resolve_address(uint32_t ip_address)
     ether_tx(broadcast_addr, ETHERTYPE_ARP, arp_request,
              sizeof(*arp_request));
 
-    wait_for_volatile_condition(arp_p_req.finished);
+    wait_for_volatile_condition(arp_p_req.finished, arp_waitqueue);
 
     if (arp_p_req.timed_out)
         return 0;
@@ -183,6 +185,8 @@ void arp_process_packet(void *payload, int payload_len)
                 break;
             }
         }
+
+        waitqueue_wakeup(&arp_waitqueue);
         release_lock(&arp_lock);
     }
     default:

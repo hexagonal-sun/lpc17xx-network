@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "list.h"
 
 typedef uint32_t memaddr_t;
 
@@ -24,6 +25,20 @@ typedef struct {
     memaddr_t r10;
     memaddr_t r11;
 } sw_stack_ctx;
+
+typedef struct
+{
+    void *stack;
+    list cur_sched_queue;
+    enum {
+        RUNNING,
+        WAITING
+    } state;
+} process_t;
+
+process_t *process_get_cur_task(void);
+void process_wait(void);
+void process_wakeup(process_t *proc);
 
 typedef void (*thread_t)(void);
 

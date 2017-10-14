@@ -17,6 +17,7 @@ typedef struct
     list rx_requests;
 }udp_listener;
 
+static WAITQUEUE(udp_waitq);
 static LIST(udp_rx_requests);
 mutex_t udp_rx_requests_lock;
 
@@ -47,7 +48,8 @@ int udp_rx(uint16_t port, void *dst_buf, uint16_t dst_buf_sz)
     release_lock(&udp_rx_requests_lock);
 
     wait_for_volatile_condition(newListener.dst_buf_ptr ==
-                                newListener.dst_buf_sz);
+                                newListener.dst_buf_sz,
+                                udp_waitq);
 
     get_lock(&udp_rx_requests_lock);
     list_del(&newListener.rx_requests);
@@ -79,6 +81,7 @@ void udp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
                 memcpy(i->dst_buf + i->dst_buf_ptr, udp_payload, no_bytes_to_copy);
 
                 i->dst_buf_ptr += no_bytes_to_copy;
+                waitqueue_wakeup(&udp_waitq);
             }
         }
         release_lock(&udp_rx_requests_lock);

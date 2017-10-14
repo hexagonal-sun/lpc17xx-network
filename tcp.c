@@ -21,6 +21,7 @@ typedef struct
 } tcp_pseudo;
 
 
+static WAITQUEUE(tcp_waitq);
 LIST(tcb_head);
 
 static void tcp_swap_endian(tcp_header *header)
@@ -184,11 +185,11 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             tcp_tx(response, referenced_tcb->dst_ip, NULL, 0);
 
             referenced_tcb->state = ESTABLISHED;
-            return;
+            break;
         }
 
         referenced_tcb->state = CLOSED;
-        return;
+        break;
 
     case LISTEN:
         if (incoming->syn) {
@@ -234,6 +235,8 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
         }
         break;
     }
+
+    waitqueue_wakeup(&tcp_waitq);
 }
 
 /* Perform a 3-way handshake and establish a TCP connection. */
@@ -264,7 +267,8 @@ tcb *tcp_connect(uint16_t port, uint32_t ip)
 
     tcp_tx(header, ip, NULL, 0);
 
-    wait_for_volatile_condition(new_tcb->state != SYN_SENT);
+    wait_for_volatile_condition(new_tcb->state != SYN_SENT,
+                                tcp_waitq);;
 
     if (new_tcb->state == ESTABLISHED)
         return new_tcb;
@@ -292,7 +296,8 @@ tcb *tcp_listen(uint16_t port)
 
     list_add(&new_tcb->tcb_next, &tcb_head);
 
-    wait_for_volatile_condition(new_tcb->state == SYN_RECEIVED);
+    wait_for_volatile_condition(new_tcb->state == SYN_RECEIVED,
+                                tcp_waitq);
 
     memset(&resp, 0, sizeof(resp));
 
@@ -303,7 +308,8 @@ tcb *tcp_listen(uint16_t port)
 
     tcp_tx(resp, new_tcb->dst_ip, NULL, 0);
 
-    wait_for_volatile_condition(new_tcb->state == ESTABLISHED);
+    wait_for_volatile_condition(new_tcb->state == ESTABLISHED,
+                                tcp_waitq);
 
     return new_tcb;
 }
@@ -322,7 +328,8 @@ void tcp_tx_data(tcb *connection, void *data, size_t len)
 
     tcp_tx(header, connection->dst_ip, data, len);
 
-    wait_for_volatile_condition(!connection->unacked_byte_count);
+    wait_for_volatile_condition(!connection->unacked_byte_count,
+                                tcp_waitq);
 }
 
 void tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
@@ -331,7 +338,8 @@ void tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
         size_t no_bytes_to_copy, bytes_in_buf;
 
         wait_for_volatile_condition(
-            circular_buf_cur_usage(&connection->rx_buf) != 0);
+            circular_buf_cur_usage(&connection->rx_buf) != 0,
+            tcp_waitq);
 
         bytes_in_buf = circular_buf_cur_usage(&connection->rx_buf);
         no_bytes_to_copy = bytes_in_buf > len ? len : bytes_in_buf;
