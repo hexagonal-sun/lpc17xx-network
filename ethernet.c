@@ -10,6 +10,7 @@
 #include "tick.h"
 #include "init.h"
 #include "process.h"
+#include "wait.h"
 #include <string.h>
 
 struct ether_rx_q_t
@@ -29,9 +30,11 @@ struct ether_tx_q_t
 };
 
 LIST(ether_rx_queue);
+static WAITQUEUE(ether_rx_waitq);
 static mutex_t ether_rx_queue_lock = 0;
 
 LIST(ether_tx_queue);
+static WAITQUEUE(ether_tx_waitq);
 static mutex_t ether_tx_queue_lock = 0;
 
 void ether_rx_frame(void *frame, int frame_len)
@@ -47,6 +50,8 @@ void ether_rx_frame(void *frame, int frame_len)
     get_lock(&ether_rx_queue_lock);
     list_add(&newPacket->packets, &ether_rx_queue);
     release_lock(&ether_rx_queue_lock);
+
+    waitqueue_wakeup(&ether_rx_waitq);
 }
 
 void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
@@ -62,6 +67,8 @@ void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
     get_lock(&ether_tx_queue_lock);
     list_add(&newPacket->next, &ether_tx_queue);
     release_lock(&ether_tx_queue_lock);
+
+    waitqueue_wakeup(&ether_tx_waitq);
 }
 
 
@@ -120,49 +127,57 @@ void ethernet_mac_copy(uint8_t *dst, uint8_t *src)
     memcpy(dst, src, ETHER_ADDR_LEN);
 }
 
-static void ether_task(void)
+static void ether_rx_task(void)
 {
     while (1) {
-        struct ether_rx_q_t *rx_packet;
-        struct ether_tx_q_t *tx_packet;
+        struct ether_rx_q_t *rxd_pkt;
 
-        do {
-            __irq_disable();
-            if (try_lock(&ether_rx_queue_lock)) {
-                list_pop(rx_packet, &ether_rx_queue, packets);
+        wait_for_volatile_condition((!list_empty(&ether_rx_queue)),
+                                    ether_rx_waitq);
 
-                release_lock(&ether_rx_queue_lock);
-            } else
-                rx_packet = NULL;
-            __irq_enable();
+        __irq_disable();
+        if (try_lock(&ether_rx_queue_lock)) {
+            list_pop(rxd_pkt, &ether_rx_queue, packets);
 
-            if (rx_packet) {
-                ether_process_frame(rx_packet->packet, rx_packet->packet_len);
+            release_lock(&ether_rx_queue_lock);
+        } else
+            rxd_pkt = NULL;
+        __irq_enable();
 
-                free_mem(rx_packet->packet);
-                free_mem(rx_packet);
-            }
-        } while (rx_packet);
+        if (rxd_pkt) {
+            ether_process_frame(rxd_pkt->packet, rxd_pkt->packet_len);
 
-        do {
-            __irq_disable();
-            if (try_lock(&ether_tx_queue_lock)) {
-                list_pop(tx_packet, &ether_tx_queue, next);
-
-                release_lock(&ether_tx_queue_lock);
-            } else
-                tx_packet = NULL;
-            __irq_enable();
-
-            if (tx_packet) {
-
-                ether_xmit_payload(tx_packet->dhost, tx_packet->ether_type,
-                                   tx_packet->payload, tx_packet->payload_len);
-
-                free_mem(tx_packet->payload);
-                free_mem(tx_packet);
-            }
-        } while (tx_packet);
+            free_mem(rxd_pkt->packet);
+            free_mem(rxd_pkt);
+        }
     }
 }
-thread(ether_task);
+thread(ether_rx_task);
+
+static void ether_tx_task(void)
+{
+    while (1) {
+        struct ether_tx_q_t *txd_pkt;
+
+        wait_for_volatile_condition((!list_empty(&ether_tx_queue)),
+                                    ether_tx_waitq);
+
+        __irq_disable();
+        if (try_lock(&ether_tx_queue_lock)) {
+            list_pop(txd_pkt, &ether_tx_queue, next);
+
+            release_lock(&ether_tx_queue_lock);
+        } else
+            txd_pkt = NULL;
+        __irq_enable();
+
+        if (txd_pkt) {
+            ether_xmit_payload(txd_pkt->dhost, txd_pkt->ether_type,
+                               txd_pkt->payload, txd_pkt->payload_len);
+
+            free_mem(txd_pkt->payload);
+            free_mem(txd_pkt);
+        }
+    }
+}
+thread(ether_tx_task);
