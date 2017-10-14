@@ -14,10 +14,8 @@ irq_pendsv:
 1:	blx	pick_new_task
 
 	/* Restore the context of PSP stack pointed at by r0. */
-	cmp	r0, #0
-	beq	1f
 	ldmia	r0!, {r4 - r11}
-1:	msr	psp, r0
+	msr	psp, r0
 	mov	lr, #0xFFFFFFFD
 	bx	lr
 	.endfunc

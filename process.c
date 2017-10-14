@@ -11,6 +11,7 @@ LIST(runqueue);
 LIST(waitqueue);
 
 static process_t *current_tsk = NULL;
+static process_t *idle_tsk;
 
 static void reschedule()
 {
@@ -54,33 +55,48 @@ void process_wait(void)
     reschedule();
 }
 
+static process_t *create_process(memaddr_t pc)
+{
+    static void *next_stack = (void *)0x10007C00;
+    process_t *new_process = get_mem(sizeof(*new_process));
+    hw_stack_ctx *new_hw_stack_ctx;
+    sw_stack_ctx *new_sw_stack_ctx;
+
+    new_hw_stack_ctx = next_stack - sizeof(hw_stack_ctx);;
+    new_sw_stack_ctx = new_process->stack =
+        (void *)new_hw_stack_ctx - sizeof(sw_stack_ctx);
+
+    memset(new_hw_stack_ctx, 0, sizeof(*new_hw_stack_ctx));
+    memset(new_sw_stack_ctx, 0, sizeof(*new_sw_stack_ctx));
+
+    new_hw_stack_ctx->pc = pc;
+    new_hw_stack_ctx->psr = 0x01000000;
+
+    next_stack -= 0x400;    /* 1k per stack. */
+
+    return new_process;
+}
+
+static void __idle_task(void)
+{
+    while (1)
+        asm volatile("wfi");
+}
+
 static void process_init(void)
 {
     extern thread_t _sthreads, _ethreads;
-    static void *next_stack = (void *)0x10007C00;
     thread_t *cur = &_sthreads;
     uint32_t zero = 0;
 
     while (cur != &_ethreads)
     {
-        process_t *new_process = get_mem(sizeof(*new_process));
-        hw_stack_ctx *new_hw_stack_ctx;
-        sw_stack_ctx *new_sw_stack_ctx;
-
-        new_hw_stack_ctx = next_stack - sizeof(hw_stack_ctx);;
-        new_sw_stack_ctx = new_process->stack =
-            (void *)new_hw_stack_ctx - sizeof(sw_stack_ctx);
-
-        memset(new_hw_stack_ctx, 0, sizeof(*new_hw_stack_ctx));
-        memset(new_sw_stack_ctx, 0, sizeof(*new_sw_stack_ctx));
-
-        new_hw_stack_ctx->pc = (uint32_t)(*cur++);
-        new_hw_stack_ctx->psr = 0x01000000;
-
+        process_t *new_process = create_process((memaddr_t)*cur++);
         list_add(&new_process->cur_sched_queue, &runqueue);
         new_process->state = RUNNING;
-        next_stack -= 0x400;    /* 1k per stack. */
     }
+
+    idle_tsk = create_process((memaddr_t)&__idle_task);
 
     /* To kick off, we want the PSP to be NULL, so that irq_pendsv
      * doesn't attempt to stack values of an empty task. */
@@ -114,9 +130,8 @@ void *pick_new_task(void *current_stack)
 
    /* Check for no cur_sched_queue. */
     if (list_empty(&runqueue)) {
-        LPC_SCB->SCR |= SCR_SLEEPONEXIT_MASK;
-        current_tsk = NULL;
-        return NULL;
+        current_tsk = idle_tsk;
+        return idle_tsk->stack;
     }
 
     /* Pick the head of the runqueue. */
