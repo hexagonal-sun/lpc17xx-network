@@ -29,11 +29,11 @@ struct ether_tx_q_t
     list next;
 };
 
-LIST(ether_rx_queue);
+static LIST(ether_rx_queue);
 static WAITQUEUE(ether_rx_waitq);
 static mutex_t ether_rx_queue_lock = 0;
 
-LIST(ether_tx_queue);
+static LIST(ether_tx_queue);
 static WAITQUEUE(ether_tx_waitq);
 static mutex_t ether_tx_queue_lock = 0;
 
