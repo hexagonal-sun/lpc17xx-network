@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-extern uint8_t _etext, _sdata, _edata, _sbss, _ebss;
+extern uint8_t _sbss, _ebss;
 extern initcall_t _sinitcalls, _einitcalls;
 
 extern void main(void);
@@ -23,16 +23,11 @@ void __attribute__((noreturn)) _start(void *virt_addr,
                                       void *phys_addr,
                                       void *pgtb_addr)
 {
-    uint8_t *src = &_etext;
-    uint8_t *dst = &_sdata;
-
-    /* Copy the data into RAM. */
-    while (dst < &_edata)
-        *dst++ = *src++;
+    uint8_t *i;
 
     /* Zero the BSS. */
-    for (dst = &_sbss; dst < &_ebss; dst++)
-        *dst = 0;
+    for (i = &_sbss; i < &_ebss; i++)
+        *i = 0;
 
     memory_init();
 
