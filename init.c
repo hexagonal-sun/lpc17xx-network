@@ -19,8 +19,8 @@ static void call_initcalls()
 
 /* Called straight after reset.  Copy over the data, zero the BSS and
  * call main. */
-void __attribute__((noreturn)) _start(void *phys_addr,
-                                      void *virt_addr,
+void __attribute__((noreturn)) _start(void *virt_addr,
+                                      void *phys_addr,
                                       void *pgtb_addr)
 {
     uint8_t *src = &_etext;
