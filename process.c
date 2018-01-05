@@ -48,7 +48,6 @@ void process_wakeup(process_t *proc)
 void process_wait(void)
 {
     __irq_disable();
-    list_del(&current_tsk->cur_sched_queue);
 
     list_add(&current_tsk->cur_sched_queue, &waitqueue);
     current_tsk->state = WAITING;
