@@ -13,7 +13,7 @@ vectors:
 	.word		_sstack
 	.word		_start
 	irq_handler	irq_nmi
-	irq_handler	irq_hardfault
+	.word		irq_hardfault
 	irq_handler	irq_memmanage
 	irq_handler	irq_busfault
 	irq_handler	irq_usagefault
@@ -69,4 +69,16 @@ vectors:
 	.thumb_func
 default_irq_handler:
 	bx	lr
+	.endfunc
+
+	.func irq_hardfault
+	.thumb_func
+	.global irq_hardfault
+irq_hardfault:
+	tst	lr, #4
+	ite	eq
+	mrseq	r0, msp
+	mrsne	r0, psp
+	ldr	r1, [r0, #24]
+	b	.
 	.endfunc
