@@ -129,13 +129,22 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
     waitqueue_wakeup(&ip4_tx_waitq);
 }
 
+static uint32_t ip4_get_pkt_dst(uint32_t dst_ip)
+{
+    if (dst_ip & NET_MASK == OUR_IP_ADDRESS & NET_MASK)
+        return IP_GATEWAY;
+
+    return dst_ip;
+}
+
 static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                                uint16_t payload_len)
 {
     void *packet_buf;
     int packet_buf_len = sizeof(ip4_header) + payload_len;
     ip4_header *header;
-    uint8_t *dst_hw_addr = resolve_address(dst_ip);
+    uint32_t pkt_dst_ip = ip4_get_pkt_dst(dst_ip);
+    uint8_t *dst_hw_addr = resolve_address(pkt_dst_ip);
 
     if (!dst_hw_addr)
         return;
