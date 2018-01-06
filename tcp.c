@@ -207,9 +207,11 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
         }
         break;
     case ESTABLISHED:
+    {
+        int no_acked_bytes = 0;
 
         if (incoming->ack) {
-            int no_acked_bytes = incoming->ack_n -
+            no_acked_bytes = incoming->ack_n -
                 referenced_tcb->cur_seq_n;
 
             if (no_acked_bytes > 0)
@@ -232,8 +234,24 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             resp.ack = 1;
 
             tcp_tx(resp, dst_ip, NULL, 0);
+            break;
+        }
+
+        if (!data_len && !no_acked_bytes)
+        {
+            tcp_header resp;
+
+            memset(&resp, 0, sizeof(resp));
+
+            tcp_header_prepopulate(referenced_tcb, &resp);
+
+            resp.ack = 1;
+
+            tcp_tx(resp, dst_ip, NULL, 0);
+            break;
         }
         break;
+    }
     }
 
     waitqueue_wakeup(&tcp_waitq);
