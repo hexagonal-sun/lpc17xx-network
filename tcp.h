@@ -64,7 +64,10 @@ tcb *tcp_listen(uint16_t port);
 void tcp_tx_data(tcb *connection, void *data, size_t len);
 
 /* Receive data down an already-established TCP connection. */
-void tcp_rx_data(tcb *connection, void *dst_buf, size_t len);
+int tcp_rx_data(tcb *connection, void *dst_buf, size_t len);
+
+/* Closed an established TCP connection. */
+void tcp_close(tcb *connection);
 
 #define for_each_tcb(pos)                       \
     list_for_each((pos), &tcb_head, tcb_next)

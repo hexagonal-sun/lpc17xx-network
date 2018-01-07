@@ -118,6 +118,7 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
     tcp_header *incoming = (tcp_header *)payload;
     size_t tcp_header_sz = incoming->data_offset * 4;
     size_t data_len = payload_len - tcp_header_sz;
+    int send_ack = 0;
 
     tcp_swap_endian(incoming);
 
@@ -163,6 +164,11 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
     referenced_tcb->decrement_timeout = 0;
     referenced_tcb->timed_out = 0;
     referenced_tcb->timeout = 0;
+
+    if (referenced_tcb->state == CLOSE_WAIT) {
+        __irq_disable();
+        asm("b .");
+    }
 
     switch(referenced_tcb->state)
     {
@@ -220,38 +226,48 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             referenced_tcb->cur_seq_n = incoming->ack_n;
         }
 
+        if (incoming->fin) {
+            referenced_tcb->state = CLOSE_WAIT;
+            referenced_tcb->cur_ack_n++;
+            send_ack = 1;
+        }
+
         if (data_len) {
             uint8_t *data_buf = payload + sizeof(tcp_header);
-            tcp_header resp;
-
-            memset(&resp, 0, sizeof(resp));
-
             circular_buf_push(&referenced_tcb->rx_buf, data_buf, data_len);
 
             referenced_tcb->cur_ack_n += data_len;
-            tcp_header_prepopulate(referenced_tcb, &resp);
-
-            resp.ack = 1;
-
-            tcp_tx(resp, dst_ip, NULL, 0);
-            break;
+            send_ack = 1;
         }
 
         if (!data_len && !no_acked_bytes)
-        {
-            tcp_header resp;
-
-            memset(&resp, 0, sizeof(resp));
-
-            tcp_header_prepopulate(referenced_tcb, &resp);
-
-            resp.ack = 1;
-
-            tcp_tx(resp, dst_ip, NULL, 0);
-            break;
-        }
+            send_ack = 1;
         break;
     }
+    case CLOSE_WAIT:
+    {
+        if (incoming->ack &&
+            incoming->ack_n == referenced_tcb->cur_ack_n + 1) {
+            circular_buf_free(&referenced_tcb->rx_buf);
+            list_del(&referenced_tcb->tcb_next);
+            free_mem(referenced_tcb);
+
+            return;
+        }
+    }
+    }
+
+    if (send_ack)
+    {
+        tcp_header resp;
+
+        memset(&resp, 0, sizeof(resp));
+
+        tcp_header_prepopulate(referenced_tcb, &resp);
+
+        resp.ack = 1;
+
+        tcp_tx(resp, dst_ip, NULL, 0);
     }
 
     waitqueue_wakeup(&tcp_waitq);
@@ -350,14 +366,18 @@ void tcp_tx_data(tcb *connection, void *data, size_t len)
                                 tcp_waitq);
 }
 
-void tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
+int tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
 {
     while (len) {
         size_t no_bytes_to_copy, bytes_in_buf;
 
         wait_for_volatile_condition(
-            circular_buf_cur_usage(&connection->rx_buf) != 0,
+            (circular_buf_cur_usage(&connection->rx_buf) != 0)
+            || connection->state == CLOSE_WAIT,
             tcp_waitq);
+
+        if (connection->state == CLOSE_WAIT)
+            return -1;
 
         bytes_in_buf = circular_buf_cur_usage(&connection->rx_buf);
         no_bytes_to_copy = bytes_in_buf > len ? len : bytes_in_buf;
@@ -367,6 +387,28 @@ void tcp_rx_data(tcb *connection, void *dst_buf, size_t len)
         len -= no_bytes_to_copy;
         dst_buf += no_bytes_to_copy;
     }
+
+    return 0;
+}
+
+void tcp_close(tcb *connection)
+{
+    if (connection->state == CLOSE_WAIT) {
+        tcp_header our_fin;
+
+        memset(&our_fin, 0, sizeof(our_fin));
+
+        tcp_header_prepopulate(connection, &our_fin);
+
+        our_fin.fin = 1;
+        our_fin.ack = 1;
+
+        tcp_tx(our_fin, connection->dst_ip, NULL, 0);
+
+        connection->state = LAST_ACK;
+    }
+
+    /* Todo: close active connection. */
 }
 
 void tcp_tick(void)
