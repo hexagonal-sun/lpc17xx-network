@@ -64,7 +64,7 @@ static void process_finish()
     reschedule();
 }
 
-static process_t *create_process(memaddr_t pc)
+static process_t *create_process(memaddr_t pc, memaddr_t r0)
 {
     static void *next_stack = (void *)0x10007C00;
     process_t *new_process = get_mem(sizeof(*new_process));
@@ -80,11 +80,20 @@ static process_t *create_process(memaddr_t pc)
 
     new_hw_stack_ctx->pc = pc;
     new_hw_stack_ctx->lr = process_finish;
+    new_hw_stack_ctx->r0 = r0;
     new_hw_stack_ctx->psr = 0x01000000;
 
     next_stack -= 0x400;    /* 1k per stack. */
 
     return new_process;
+}
+
+void process_spawn(memaddr_t pc, memaddr_t r0)
+{
+    process_t *newproc = create_process(pc, r0);
+
+    list_add(&newproc->cur_sched_queue, &runqueue);
+    newproc->state = RUNNING;
 }
 
 static void __idle_task(void)
@@ -111,13 +120,9 @@ static void process_init(void)
     uint32_t zero = 0;
 
     while (cur != &_ethreads)
-    {
-        process_t *new_process = create_process((memaddr_t)*cur++);
-        list_add(&new_process->cur_sched_queue, &runqueue);
-        new_process->state = RUNNING;
-    }
+        process_spawn((memaddr_t)*cur++, 0);
 
-    idle_tsk = create_process((memaddr_t)&__idle_task);
+    idle_tsk = create_process((memaddr_t)&__idle_task, 0);
 
     /* To kick off, we want the PSP to be NULL, so that irq_pendsv
      * doesn't attempt to stack values of an empty task. */

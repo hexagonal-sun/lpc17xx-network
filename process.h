@@ -39,6 +39,7 @@ typedef struct
 
 process_t *process_get_cur_task(void);
 void process_wait(void);
+void process_spawn(memaddr_t pc, memaddr_t r0);
 void process_wakeup(process_t *proc);
 
 typedef void (*thread_t)(void);
