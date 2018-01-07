@@ -9,6 +9,7 @@
 
 LIST(runqueue);
 LIST(waitqueue);
+LIST(deadqueue);
 
 static process_t *current_tsk = NULL;
 static process_t *idle_tsk;
@@ -54,6 +55,15 @@ void process_wait(void)
     reschedule();
 }
 
+static void process_finish()
+{
+    __irq_disable();
+
+    list_add(&current_tsk->cur_sched_queue, &deadqueue);
+    current_tsk->state = FINISHED;
+    reschedule();
+}
+
 static process_t *create_process(memaddr_t pc)
 {
     static void *next_stack = (void *)0x10007C00;
@@ -69,6 +79,7 @@ static process_t *create_process(memaddr_t pc)
     memset(new_sw_stack_ctx, 0, sizeof(*new_sw_stack_ctx));
 
     new_hw_stack_ctx->pc = pc;
+    new_hw_stack_ctx->lr = process_finish;
     new_hw_stack_ctx->psr = 0x01000000;
 
     next_stack -= 0x400;    /* 1k per stack. */
@@ -78,8 +89,19 @@ static process_t *create_process(memaddr_t pc)
 
 static void __idle_task(void)
 {
-    while (1)
+    process_t *dead_process;
+
+    while (1) {
+        __irq_disable();
+        list_pop(dead_process, &deadqueue, cur_sched_queue);
+
+        if (dead_process)
+            free_mem(dead_process);
+
+        __irq_enable();
+
         asm volatile("wfi");
+    }
 }
 
 static void process_init(void)

@@ -32,7 +32,8 @@ typedef struct
     list cur_sched_queue;
     enum {
         RUNNING,
-        WAITING
+        WAITING,
+        FINISHED
     } state;
 } process_t;
 
