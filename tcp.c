@@ -122,12 +122,26 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
 
     tcp_swap_endian(incoming);
 
-    /* Find the tcb that this packet was for. */
+    /* Find the TCB that this packet was for. */
     list_for_each(i, &tcb_head, tcb_next)
-        if (incoming->dest_port == i->src_port) {
+        if (incoming->dest_port == i->src_port &&
+            incoming->source_port == i->dst_port &&
+            dst_ip == i->dst_ip) {
             referenced_tcb = i;
             break;
         }
+
+    /* If we didn't find a TCB, see if there are any TCBs that are in
+     * the listening state that can accept this packet as it may be
+     * the start of a new connection. */
+    if (!referenced_tcb) {
+        list_for_each(i, &tcb_head, tcb_next)
+            if (i->state == LISTEN &&
+                incoming->dest_port == i->src_port) {
+                referenced_tcb = i;
+                break;
+            }
+    }
 
     if (referenced_tcb == NULL) {
         tcp_header response;
