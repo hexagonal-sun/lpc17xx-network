@@ -33,12 +33,12 @@ process_t *process_get_cur_task(void)
  */
 void process_wakeup(process_t *proc)
 {
-    __irq_disable();
+    irq_flags_t flags = irq_disable();
     list_del(&proc->cur_sched_queue);
 
     list_add(&proc->cur_sched_queue, &runqueue);
     proc->state = RUNNING;
-    __irq_enable();
+    irq_enable(flags);
 }
 
 /* Put the current process on the waitqueue and force a context switch
@@ -101,13 +101,13 @@ static void __idle_task(void)
     process_t *dead_process;
 
     while (1) {
-        __irq_disable();
+        irq_flags_t flags = irq_disable();
         list_pop(dead_process, &deadqueue, cur_sched_queue);
 
         if (dead_process)
             free_mem(dead_process);
 
-        __irq_enable();
+        irq_enable(flags);
 
         asm volatile("wfi");
     }

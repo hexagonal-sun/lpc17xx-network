@@ -131,18 +131,19 @@ static void ether_rx_task(void)
 {
     while (1) {
         struct ether_rx_q_t *rxd_pkt;
+        irq_flags_t flags;
 
         wait_for_volatile_condition((!list_empty(&ether_rx_queue)),
                                     ether_rx_waitq);
 
-        __irq_disable();
+        flags = irq_disable();
         if (try_lock(&ether_rx_queue_lock)) {
             list_pop(rxd_pkt, &ether_rx_queue, packets);
 
             release_lock(&ether_rx_queue_lock);
         } else
             rxd_pkt = NULL;
-        __irq_enable();
+        irq_enable(flags);
 
         if (rxd_pkt) {
             ether_process_frame(rxd_pkt->packet, rxd_pkt->packet_len);
@@ -158,18 +159,19 @@ static void ether_tx_task(void)
 {
     while (1) {
         struct ether_tx_q_t *txd_pkt;
+        irq_flags_t flags;
 
         wait_for_volatile_condition((!list_empty(&ether_tx_queue)),
                                     ether_tx_waitq);
 
-        __irq_disable();
+        flags = irq_disable();
         if (try_lock(&ether_tx_queue_lock)) {
             list_pop(txd_pkt, &ether_tx_queue, next);
 
             release_lock(&ether_tx_queue_lock);
         } else
             txd_pkt = NULL;
-        __irq_enable();
+        irq_enable(flags);
 
         if (txd_pkt) {
             ether_xmit_payload(txd_pkt->dhost, txd_pkt->ether_type,

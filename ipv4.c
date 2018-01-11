@@ -176,18 +176,19 @@ static void ip4_rx_task(void)
 {
     while (1) {
         ip4_rx_q_t *rxd_pkt;
+        irq_flags_t flags;
 
         wait_for_volatile_condition((!list_empty(&ip4_rx_queue)),
                                     ip4_rx_waitq);
 
-        __irq_disable();
+        flags = irq_disable();
         if (try_lock(&ip4_rx_queue_lock)) {
             list_pop(rxd_pkt, &ip4_rx_queue, packets);
 
             release_lock(&ip4_rx_queue_lock);
         } else
             rxd_pkt = NULL;
-        __irq_enable();
+        irq_enable(flags);
 
         if (rxd_pkt) {
             ip4_do_rx_packet(rxd_pkt->packet, rxd_pkt->packet_len);
@@ -203,18 +204,19 @@ static void ip4_tx_task(void)
 {
     while (1) {
         ip4_tx_q_t *tx_pkt;
+        irq_flags_t flags;
 
         wait_for_volatile_condition((!list_empty(&ip4_tx_queue)),
                                     ip4_tx_waitq);
 
-        __irq_disable();
+        flags = irq_disable();
         if (try_lock(&ip4_tx_queue_lock)) {
             list_pop(tx_pkt, &ip4_tx_queue, next);
 
             release_lock(&ip4_tx_queue_lock);
         } else
             tx_pkt = NULL;
-        __irq_enable();
+        irq_enable(flags);
 
         if (tx_pkt) {
             ip4_do_xmit_packet(tx_pkt->protocol, tx_pkt->dst_ip,
