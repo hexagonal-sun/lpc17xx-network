@@ -19,6 +19,7 @@ void __waitqueue_wait(waitqueue_t *waitq)
 void waitqueue_wakeup(waitqueue_t *waitq)
 {
     list *i, *tmp;
+    irq_flags_t flags = irq_disable();
 
     list_for_each_safe(i, tmp, waitq) {
         waiting_proc_t *waitproc =
@@ -28,4 +29,6 @@ void waitqueue_wakeup(waitqueue_t *waitq)
         list_del(&waitproc->queue);
         free_mem(waitproc);
     }
+
+    irq_enable(flags);
 }
