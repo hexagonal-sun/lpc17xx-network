@@ -154,17 +154,13 @@ void *pick_new_task(void *current_stack)
             list_add_tail(&current_tsk->cur_sched_queue, &runqueue);
     }
 
-   /* Check for no cur_sched_queue. */
-    if (list_empty(&runqueue)) {
+    /* Pick the head of the runqueue. */
+    list_pop(next, &runqueue, cur_sched_queue);
+
+    if (!next) {
         current_tsk = idle_tsk;
         return idle_tsk->stack;
     }
-
-    /* Pick the head of the runqueue. */
-    next = list_entry(runqueue.next, process_t, cur_sched_queue);
-
-    /* Remove from the runqueue. */
-    list_del(&next->cur_sched_queue);
 
     /* Set as current task. */
     current_tsk = next;
