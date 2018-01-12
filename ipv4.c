@@ -131,10 +131,10 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
 
 static uint32_t ip4_get_pkt_dst(uint32_t dst_ip)
 {
-    if (dst_ip & NET_MASK == OUR_IP_ADDRESS & NET_MASK)
-        return IP_GATEWAY;
+    if ((dst_ip & NET_MASK) == (OUR_IP_ADDRESS & NET_MASK))
+        return dst_ip;
 
-    return dst_ip;
+    return IP_GATEWAY;
 }
 
 static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
