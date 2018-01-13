@@ -6,7 +6,6 @@
 #include "udp.h"
 #include "tcp.h"
 #include "process.h"
-#include "atomics.h"
 #include "irq.h"
 #include "wait.h"
 #include <string.h>
@@ -31,11 +30,9 @@ typedef struct
 
 static LIST(ip4_rx_queue);
 static WAITQUEUE(ip4_rx_waitq);
-static mutex_t ip4_rx_queue_lock = 0;
 
 static LIST(ip4_tx_queue);
 static WAITQUEUE(ip4_tx_waitq);
-static mutex_t ip4_tx_queue_lock = 0;
 
 static void ip4_swap_endian(ip4_header *iphdr)
 {
@@ -63,6 +60,7 @@ static void ip4_compute_checksum(ip4_header *header)
 void ip4_rx_packet(void *packet, int packet_len)
 {
     ip4_rx_q_t *new_packet = get_mem(sizeof(*new_packet));
+    irq_flags_t flags;
 
     void *our_packet = get_mem(packet_len);
     memcpy(our_packet, packet, packet_len);
@@ -70,9 +68,9 @@ void ip4_rx_packet(void *packet, int packet_len)
     new_packet->packet = our_packet;
     new_packet->packet_len = packet_len;
 
-    get_lock(&ip4_rx_queue_lock);
+    flags = irq_disable();
     list_add(&new_packet->packets, &ip4_rx_queue);
-    release_lock(&ip4_rx_queue_lock);
+    irq_enable(flags);
 
     waitqueue_wakeup(&ip4_rx_waitq);
 }
@@ -116,15 +114,16 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                      uint16_t payload_len)
 {
     ip4_tx_q_t *new_packet = get_mem(sizeof(*new_packet));
+    irq_flags_t flags;
 
     new_packet->protocol = protocol;
     new_packet->dst_ip = dst_ip;
     new_packet->payload = payload;
     new_packet->payload_len = payload_len;
 
-    get_lock(&ip4_tx_queue_lock);
+    flags = irq_disable();
     list_add(&new_packet->next, &ip4_tx_queue);
-    release_lock(&ip4_tx_queue_lock);
+    irq_enable(flags);
 
     waitqueue_wakeup(&ip4_tx_waitq);
 }
@@ -182,12 +181,7 @@ static void ip4_rx_task(void)
                                     ip4_rx_waitq);
 
         flags = irq_disable();
-        if (try_lock(&ip4_rx_queue_lock)) {
-            list_pop(rxd_pkt, &ip4_rx_queue, packets);
-
-            release_lock(&ip4_rx_queue_lock);
-        } else
-            rxd_pkt = NULL;
+        list_pop(rxd_pkt, &ip4_rx_queue, packets);
         irq_enable(flags);
 
         if (rxd_pkt) {
@@ -210,12 +204,7 @@ static void ip4_tx_task(void)
                                     ip4_tx_waitq);
 
         flags = irq_disable();
-        if (try_lock(&ip4_tx_queue_lock)) {
-            list_pop(tx_pkt, &ip4_tx_queue, next);
-
-            release_lock(&ip4_tx_queue_lock);
-        } else
-            tx_pkt = NULL;
+        list_pop(tx_pkt, &ip4_tx_queue, next);
         irq_enable(flags);
 
         if (tx_pkt) {

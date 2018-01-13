@@ -1,27 +1,25 @@
-#include "atomics.h"
+#include "irq.h"
 #include "lpc17xx.h"
 #include "tick.h"
 #include "process.h"
 #include "init.h"
 
 LIST(tick_work);
-static mutex_t tick_work_q_lock = 0;
 static int timer0_irq_wakeups = 0;
 
 void irq_timer0(void)
 {
+    irq_flags_t flags = irq_disable();
     timer0_irq_wakeups++;
 
     /* Invoke all tick functions. */
-    if (try_lock(&tick_work_q_lock)) {
-        struct tick_work_q *i;
+    struct tick_work_q *i;
 
-        list_for_each(i, &tick_work, tick_work_l) {
-            i->tick_fn();
-        }
-
-        release_lock(&tick_work_q_lock);
+    list_for_each(i, &tick_work, tick_work_l) {
+        i->tick_fn();
     }
+
+    irq_enable(flags);
 
     /* Acknowledge the interrupt. */
     LPC_TIM0->IR = 0x1;
@@ -32,9 +30,9 @@ void irq_timer0(void)
 
 void tick_add_work_fn(struct tick_work_q *new_work)
 {
-    get_lock(&tick_work_q_lock);
+    irq_flags_t flags = irq_disable();
     list_add(&new_work->tick_work_l, &tick_work);
-    release_lock(&tick_work_q_lock);
+    irq_enable(flags);
 }
 
 void tick_init(void)

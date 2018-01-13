@@ -1,6 +1,5 @@
 #include "lpc17xx.h"
 #include "arp.h"
-#include "atomics.h"
 #include "memory.h"
 #include "byteswap.h"
 #include "emac.h"
@@ -31,15 +30,14 @@ struct ether_tx_q_t
 
 static LIST(ether_rx_queue);
 static WAITQUEUE(ether_rx_waitq);
-static mutex_t ether_rx_queue_lock = 0;
 
 static LIST(ether_tx_queue);
 static WAITQUEUE(ether_tx_waitq);
-static mutex_t ether_tx_queue_lock = 0;
 
 void ether_rx_frame(void *frame, int frame_len)
 {
     struct ether_rx_q_t *newPacket = get_mem(sizeof(*newPacket));
+    irq_flags_t flags;
 
     void *our_frame = get_mem(frame_len);
     memcpy(our_frame, frame, frame_len);
@@ -47,9 +45,9 @@ void ether_rx_frame(void *frame, int frame_len)
     newPacket->packet = our_frame;
     newPacket->packet_len = frame_len;
 
-    get_lock(&ether_rx_queue_lock);
+    flags = irq_disable();
     list_add(&newPacket->packets, &ether_rx_queue);
-    release_lock(&ether_rx_queue_lock);
+    irq_enable(flags);
 
     waitqueue_wakeup(&ether_rx_waitq);
 }
@@ -58,15 +56,16 @@ void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
               void *payload, int len)
 {
     struct ether_tx_q_t *newPacket = get_mem(sizeof(*newPacket));
+    irq_flags_t flags;
 
     ethernet_mac_copy(newPacket->dhost, dhost);
     newPacket->ether_type = ether_type;
     newPacket->payload = payload;
     newPacket->payload_len = len;
 
-    get_lock(&ether_tx_queue_lock);
+    flags = irq_disable();
     list_add(&newPacket->next, &ether_tx_queue);
-    release_lock(&ether_tx_queue_lock);
+    irq_enable(flags);
 
     waitqueue_wakeup(&ether_tx_waitq);
 }
@@ -137,12 +136,7 @@ static void ether_rx_task(void)
                                     ether_rx_waitq);
 
         flags = irq_disable();
-        if (try_lock(&ether_rx_queue_lock)) {
-            list_pop(rxd_pkt, &ether_rx_queue, packets);
-
-            release_lock(&ether_rx_queue_lock);
-        } else
-            rxd_pkt = NULL;
+        list_pop(rxd_pkt, &ether_rx_queue, packets);
         irq_enable(flags);
 
         if (rxd_pkt) {
@@ -165,12 +159,7 @@ static void ether_tx_task(void)
                                     ether_tx_waitq);
 
         flags = irq_disable();
-        if (try_lock(&ether_tx_queue_lock)) {
-            list_pop(txd_pkt, &ether_tx_queue, next);
-
-            release_lock(&ether_tx_queue_lock);
-        } else
-            txd_pkt = NULL;
+        list_pop(txd_pkt, &ether_tx_queue, next);
         irq_enable(flags);
 
         if (txd_pkt) {

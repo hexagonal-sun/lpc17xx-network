@@ -1,6 +1,6 @@
 #include "udp.h"
-#include "atomics.h"
 #include "ipv4.h"
+#include "irq.h"
 #include "byteswap.h"
 #include "memory.h"
 #include "list.h"
@@ -19,7 +19,6 @@ typedef struct
 
 static WAITQUEUE(udp_waitq);
 static LIST(udp_rx_requests);
-mutex_t udp_rx_requests_lock;
 
 static void udp_swap_endian(udp_header *header)
 {
@@ -31,8 +30,7 @@ int udp_rx(uint16_t port, void *dst_buf, uint16_t dst_buf_sz)
 {
     udp_listener *i;
     udp_listener newListener;
-
-    get_lock(&udp_rx_requests_lock);
+    irq_flags_t flags = irq_disable();
 
     list_for_each(i, &udp_rx_requests, rx_requests)
         if (i->port == port)
@@ -44,16 +42,15 @@ int udp_rx(uint16_t port, void *dst_buf, uint16_t dst_buf_sz)
     newListener.dst_buf_ptr = 0;
 
     list_add(&newListener.rx_requests, &udp_rx_requests);
-
-    release_lock(&udp_rx_requests_lock);
+    irq_enable(flags);
 
     wait_for_volatile_condition(newListener.dst_buf_ptr ==
                                 newListener.dst_buf_sz,
                                 udp_waitq);
 
-    get_lock(&udp_rx_requests_lock);
+    flags = irq_disable();
     list_del(&newListener.rx_requests);
-    release_lock(&udp_rx_requests_lock);
+    irq_enable(flags);
 
     return newListener.dst_buf_ptr;
 }
@@ -63,29 +60,29 @@ void udp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
     udp_listener *i;
     udp_header *header = (udp_header *)payload;
     uint8_t *udp_payload = (payload + sizeof(udp_header));
+    irq_flags_t flags;
 
     udp_swap_endian(header);
 
     size_t udp_payload_sz = header->length - sizeof(udp_header);
 
-    if (try_lock(&udp_rx_requests_lock)) {
-        list_for_each(i, &udp_rx_requests, rx_requests) {
-            if (i->port == header->dst_port) {
-                int user_buf_sz = i->dst_buf_sz - i->dst_buf_ptr,
-                    no_bytes_to_copy = user_buf_sz;
+    flags = irq_disable();
+    list_for_each(i, &udp_rx_requests, rx_requests) {
+        if (i->port == header->dst_port) {
+            int user_buf_sz = i->dst_buf_sz - i->dst_buf_ptr,
+                no_bytes_to_copy = user_buf_sz;
 
 
-                if (udp_payload_sz < no_bytes_to_copy)
-                    no_bytes_to_copy = udp_payload_sz;
+            if (udp_payload_sz < no_bytes_to_copy)
+                no_bytes_to_copy = udp_payload_sz;
 
-                memcpy(i->dst_buf + i->dst_buf_ptr, udp_payload, no_bytes_to_copy);
+            memcpy(i->dst_buf + i->dst_buf_ptr, udp_payload, no_bytes_to_copy);
 
-                i->dst_buf_ptr += no_bytes_to_copy;
-                waitqueue_wakeup(&udp_waitq);
-            }
+            i->dst_buf_ptr += no_bytes_to_copy;
+            waitqueue_wakeup(&udp_waitq);
         }
-        release_lock(&udp_rx_requests_lock);
     }
+    irq_enable(flags);
 }
 
 void udp_xmit_packet(uint16_t dst_port, uint32_t dst_ip, void *payload,

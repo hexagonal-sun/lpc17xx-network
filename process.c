@@ -7,9 +7,9 @@
 #include <stdint.h>
 #include <string.h>
 
-LIST(runqueue);
-LIST(waitqueue);
-LIST(deadqueue);
+static LIST(runqueue);
+static LIST(waitqueue);
+static LIST(deadqueue);
 
 static process_t *current_tsk = NULL;
 static process_t *idle_tsk;
@@ -139,6 +139,7 @@ void *pick_new_task(void *current_stack)
      *
      * Should be called with interrupts disabled.*/
     process_t *next;
+    irq_flags_t flags = irq_disable();
 
     if (current_tsk) {
 
@@ -159,13 +160,13 @@ void *pick_new_task(void *current_stack)
     /* Pick the head of the runqueue. */
     list_pop(next, &runqueue, cur_sched_queue);
 
-    if (!next) {
-        current_tsk = idle_tsk;
-        return idle_tsk->stack;
-    }
+    if (!next)
+        next = idle_tsk;
 
     /* Set as current task. */
     current_tsk = next;
+
+    irq_enable(flags);
 
     return next->stack;
 }

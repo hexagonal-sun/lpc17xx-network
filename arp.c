@@ -3,7 +3,6 @@
 #include "byteswap.h"
 #include "emac.h"
 #include "tick.h"
-#include "atomics.h"
 #include "list.h"
 #include "init.h"
 #include "wait.h"
@@ -30,15 +29,13 @@ struct arp_pending_request
     list requests;
 };
 
-LIST(arp_pending_requests);
-LIST(arp_table_head);
-static mutex_t arp_lock = 0;
+static LIST(arp_pending_requests);
+static LIST(arp_table_head);
 
 static void arp_tick()
 {
     list *i, *tmp;
-    if (!try_lock(&arp_lock))
-        return;
+    irq_flags_t flags = irq_disable();
 
     list_for_each_safe(i, tmp, &arp_pending_requests) {
         struct arp_pending_request *arp_req =
@@ -51,7 +48,7 @@ static void arp_tick()
         }
     }
 
-    release_lock(&arp_lock);
+    irq_enable(flags);
 }
 
 static void arp_swap_endian(arp_packet *packet)
@@ -69,11 +66,14 @@ uint8_t * resolve_address(uint32_t ip_address)
     struct arp_entry *cur;
     struct arp_pending_request arp_p_req;
     uint8_t broadcast_addr[ETHER_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    irq_flags_t flags;
 
+    flags = irq_disable();
     list_for_each(cur, &arp_table_head, arp_table) {
         if (cur->ipaddr == ip_address)
             return cur->ether_addr;
     }
+    irq_enable(flags);
 
     /* Need to send out ARP packet to resolve address. */
     arp_packet *arp_request = (arp_packet *)get_mem(sizeof(arp_packet));
@@ -95,7 +95,10 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     memset(&arp_p_req, 0, sizeof(arp_p_req));
     arp_p_req.TPA = ip_address;
+
+    flags = irq_disable();
     list_add(&arp_p_req.requests, &arp_pending_requests);
+    irq_enable(flags);
 
     arp_swap_endian(arp_request);
 
@@ -106,8 +109,8 @@ uint8_t * resolve_address(uint32_t ip_address)
 
     if (arp_p_req.timed_out)
         return 0;
-    else
-        return arp_p_req.answer->ether_addr;
+
+    return arp_p_req.answer->ether_addr;
 }
 
 void arp_process_packet(void *payload, int payload_len)
@@ -155,12 +158,13 @@ void arp_process_packet(void *payload, int payload_len)
     {
         struct arp_entry *new_arp_entry;
         list *i, *tmp;
+        irq_flags_t flags;
 
         /* Ensure this packet is for us. */
         if (!ethernet_mac_equal(ether_addr, packet->THA))
             return;
 
-        get_lock(&arp_lock);
+        flags = irq_disable();
 
         /* Find the request that this packet fulfils */
         list_for_each_safe(i, tmp, &arp_pending_requests) {
@@ -187,7 +191,7 @@ void arp_process_packet(void *payload, int payload_len)
         }
 
         waitqueue_wakeup(&arp_waitqueue);
-        release_lock(&arp_lock);
+        irq_enable(flags);
     }
     default:
         return;
