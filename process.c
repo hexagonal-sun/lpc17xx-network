@@ -91,9 +91,11 @@ static process_t *create_process(memaddr_t pc, memaddr_t r0)
 void process_spawn(memaddr_t pc, memaddr_t r0)
 {
     process_t *newproc = create_process(pc, r0);
+    irq_flags_t flags = irq_disable();
 
     list_add(&newproc->cur_sched_queue, &runqueue);
     newproc->state = RUNNING;
+    irq_enable(flags);
 }
 
 static void __idle_task(void)
