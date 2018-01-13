@@ -1,12 +1,13 @@
 #include "memory.h"
 #include "init.h"
+#include "irq.h"
 #include <math.h>
 
 #define BLOCK_SZ 128
 
-uint8_t *freelist;
-int no_blocks;
-void *pm_base;
+static uint8_t *freelist;
+static int no_blocks;
+static void *pm_base;
 
 static inline void *idx_2_addr(int idx)
 {
@@ -65,7 +66,9 @@ void *get_mem(int len)
 {
     int no_blocks_requested = (len / BLOCK_SZ) + 1,
         i, j;
+    irq_flags_t flags;
 
+    flags = irq_disable();
     for (i = 0; i < no_blocks - no_blocks_requested; i++)
     {
         int all_blocks_free = 1;
@@ -77,13 +80,16 @@ void *get_mem(int len)
         if (all_blocks_free)
             break;
     }
+    irq_enable(flags);
 
     /* Not enough space for allocation. */
     if (i == (no_blocks - no_blocks_requested) - 1)
         return NULL;
 
+    flags = irq_disable();
     for (j = 0; j < no_blocks_requested; j++)
         freelist[i + j] = no_blocks_requested;
+    irq_enable(flags);
 
     return idx_2_addr(i);
 }
@@ -94,6 +100,12 @@ void free_mem(void *addr)
         no_blocks = freelist[idx],
         i;
 
+    /* This isn't a critical section, as there should only ever be one
+     * thread that owns a piece of memory (if that memory is free'd
+     * twice that's not a synchronistaion issue).  Even if this
+     * function is preempted half-way through writing to the freelist,
+     * the get_mem function will only return memory that has already
+     * been marked as free by this loop. */
     for (i = 0; i < no_blocks; i++)
         freelist[idx + i] = 0x0;
 }
