@@ -39,8 +39,15 @@ void tick_add_work_fn(struct tick_work_q *new_work)
 
 void tick_init(void)
 {
+    /* CCLK is 100MHZ.  When we divide this by 4 (as PCLK_TIMER0 is
+     * equal to 00 by default), we have a counter of 25MHZ. */
+#define TICK_PERIOD (5e-3)
+#define PCLOCK_FREQ (25e6)
+#define TICK_FREQ (1 / TICK_PERIOD)
+#define TIMER_COUNTER_INIT_VALUE PCLOCK_FREQ / TICK_FREQ
+
     LPC_TIM0->PR = 0x0;
-    LPC_TIM0->MR0 = 0xFFFF;
+    LPC_TIM0->MR0 = TIMER_COUNTER_INIT_VALUE;
 
     /* Clear the timer and prescale counter registers. */
     LPC_TIM0->TC = 0x0;
