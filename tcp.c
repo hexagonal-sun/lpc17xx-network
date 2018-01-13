@@ -269,6 +269,56 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             return;
         }
     }
+    case FIN_WAIT1:
+    {
+        if (incoming->fin &&
+            incoming->ack &&
+            incoming->ack_n == referenced_tcb->cur_seq_n) {
+            referenced_tcb->cur_ack_n = incoming->seq_n + 1;
+            send_ack = 1;
+            referenced_tcb->state = TIME_WAIT;
+            referenced_tcb->timeout = TCP_TIMEOUT;
+            referenced_tcb->decrement_timeout = 1;
+            break;
+        }
+
+        if (incoming->ack &&
+            incoming->ack_n == referenced_tcb->cur_seq_n) {
+            referenced_tcb->cur_ack_n = incoming->seq_n;
+            referenced_tcb->state = FIN_WAIT2;
+            break;
+        }
+
+        if (incoming->fin) {
+            referenced_tcb->cur_ack_n++;
+            send_ack = 1;
+            referenced_tcb->state = CLOSING;
+            break;
+        }
+    }
+    case FIN_WAIT2:
+    {
+
+        if (incoming->fin &&
+            incoming->ack) {
+            referenced_tcb->cur_ack_n == incoming->ack_n;
+            send_ack = 1;
+            referenced_tcb->state = TIME_WAIT;
+            referenced_tcb->timeout = TCP_TIMEOUT;
+            referenced_tcb->decrement_timeout = 1;
+        }
+        break;
+    }
+    case CLOSING:
+    {
+        if (incoming->ack)
+            referenced_tcb->cur_ack_n = incoming->ack;
+
+        referenced_tcb->state = TIME_WAIT;
+        referenced_tcb->timeout = TCP_TIMEOUT;
+        referenced_tcb->decrement_timeout = 1;
+        break;
+    }
     }
 
     if (send_ack)
@@ -420,20 +470,41 @@ void tcp_close(tcb *connection)
         tcp_tx(our_fin, connection->dst_ip, NULL, 0);
 
         connection->state = LAST_ACK;
-    }
+    } else if (connection->state == ESTABLISHED) {
+        tcp_header fin;
 
-    /* Todo: close active connection. */
+        memset(&fin, 0, sizeof(fin));
+
+        tcp_header_prepopulate(connection, &fin);
+
+        fin.ack = 1;
+        fin.fin = 1;
+
+        tcp_tx(fin, connection->dst_ip, NULL, 0);
+
+        connection->cur_seq_n++;
+
+        connection->state = FIN_WAIT1;
+    }
 }
 
 void tcp_tick(void)
 {
-    tcb *cur;
-    for_each_tcb(cur)
+    list *i, *n;
+    list_for_each_safe(i, n, &tcb_head) {
+        tcb *cur = list_entry(i, tcb, tcb_next);
         if (cur->decrement_timeout)
             if (!cur->timeout--) {
                 cur->timed_out = 1;
                 cur->decrement_timeout = 0;
+
+                if (cur->state == TIME_WAIT) {
+                    list_del(&cur->tcb_next);
+                    circular_buf_free(&cur->rx_buf);
+                    free_mem(cur);
+                }
             }
+    }
 }
 
 static struct tick_work_q tcp_tick_work = {

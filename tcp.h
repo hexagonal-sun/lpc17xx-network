@@ -31,7 +31,11 @@ enum tcp_state {
     SYN_RECEIVED,
     ESTABLISHED,
     CLOSE_WAIT,
-    LAST_ACK
+    LAST_ACK,
+    FIN_WAIT1,
+    FIN_WAIT2,
+    CLOSING,
+    TIME_WAIT
 };
 
 typedef struct
