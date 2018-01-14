@@ -56,11 +56,14 @@ void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
               void *payload, int len)
 {
     struct ether_tx_q_t *newPacket = get_mem(sizeof(*newPacket));
+    void *payload_copy = get_mem(len);
     irq_flags_t flags;
+
+    memcpy(payload_copy, payload, len);
 
     ethernet_mac_copy(newPacket->dhost, dhost);
     newPacket->ether_type = ether_type;
-    newPacket->payload = payload;
+    newPacket->payload = payload_copy;
     newPacket->payload_len = len;
 
     flags = irq_disable();

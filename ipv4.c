@@ -114,11 +114,14 @@ void ip4_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
                      uint16_t payload_len)
 {
     ip4_tx_q_t *new_packet = get_mem(sizeof(*new_packet));
+    void *payload_copy = get_mem(payload_len);
     irq_flags_t flags;
+
+    memcpy(payload_copy, payload, payload_len);
 
     new_packet->protocol = protocol;
     new_packet->dst_ip = dst_ip;
-    new_packet->payload = payload;
+    new_packet->payload = payload_copy;
     new_packet->payload_len = payload_len;
 
     flags = irq_disable();
@@ -169,6 +172,8 @@ static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
 
     ether_tx(dst_hw_addr, ETHERTYPE_IP, packet_buf,
                        packet_buf_len);
+
+    free_mem(packet_buf);
 }
 
 static void ip4_rx_task(void)

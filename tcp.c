@@ -110,6 +110,8 @@ static void tcp_tx(tcp_header header, uint32_t dest_ip,
 
     ip4_xmit_packet(IP_PROTO_TCP, dest_ip, buf,
                     sizeof(header) + payload_len);
+
+    free_mem(buf);
 }
 
 void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
