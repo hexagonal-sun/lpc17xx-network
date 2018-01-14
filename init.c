@@ -1,6 +1,7 @@
 #include "init.h"
 #include "lpc17xx.h"
 #include "irq.h"
+#include "process.h"
 #include "memory.h"
 #include <stdint.h>
 
@@ -85,6 +86,8 @@ void __attribute__((noreturn)) _start()
     mem_setup();
 
     call_initcalls();
+
+    process_init();
 
     __irq_enable();
 

@@ -3,6 +3,7 @@
 #include "ipv4.h"
 #include "ethernet.h"
 #include "memory.h"
+#include "protocol.h"
 #include "tick.h"
 #include "init.h"
 #include "wait.h"
@@ -114,21 +115,29 @@ static void tcp_tx(tcp_header header, uint32_t dest_ip,
     free_mem(buf);
 }
 
-void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
+static void tcp_rx_packet(struct packet_t *pkt)
 {
     tcb *i, *referenced_tcb = NULL;
-    tcp_header *incoming = (tcp_header *)payload;
+    tcp_header *incoming = (tcp_header *)pkt->cur_data;
     size_t tcp_header_sz = incoming->data_offset * 4;
-    size_t data_len = payload_len - tcp_header_sz;
+    size_t data_len;
     int send_ack = 0;
 
+    pkt->cur_data += tcp_header_sz;
+    pkt->cur_data_length -= tcp_header_sz;
+    data_len = pkt->cur_data_length;
+
     tcp_swap_endian(incoming);
+
+    /* Once we return, drop the packet as this is an terminus
+     * protocol. */
+    pkt->handler = DROP;
 
     /* Find the TCB that this packet was for. */
     list_for_each(i, &tcb_head, tcb_next)
         if (incoming->dest_port == i->src_port &&
             incoming->source_port == i->dst_port &&
-            dst_ip == i->dst_ip) {
+            i->dst_ip == pkt->ip4_info.src_ip) {
             referenced_tcb = i;
             break;
         }
@@ -171,7 +180,7 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
             response.ack = 1;
         }
 
-        tcp_tx(response, dst_ip, NULL, 0);
+        tcp_tx(response, pkt->ip4_info.src_ip, NULL, 0);
         return;
     }
 
@@ -215,7 +224,7 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
 
     case LISTEN:
         if (incoming->syn) {
-            referenced_tcb->dst_ip = dst_ip;
+            referenced_tcb->dst_ip = pkt->ip4_info.src_ip;
             referenced_tcb->cur_ack_n = incoming->seq_n + 1;
             referenced_tcb->dst_port = incoming->source_port;
             referenced_tcb->state = SYN_RECEIVED;
@@ -249,8 +258,8 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
         }
 
         if (data_len) {
-            uint8_t *data_buf = payload + sizeof(tcp_header);
-            circular_buf_push(&referenced_tcb->rx_buf, data_buf, data_len);
+            circular_buf_push(&referenced_tcb->rx_buf, pkt->cur_data,
+                              data_len);
 
             referenced_tcb->cur_ack_n += data_len;
             send_ack = 1;
@@ -333,7 +342,7 @@ void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
 
         resp.ack = 1;
 
-        tcp_tx(resp, dst_ip, NULL, 0);
+        tcp_tx(resp, pkt->ip4_info.src_ip, NULL, 0);
     }
 
     waitqueue_wakeup(&tcp_waitq);
@@ -513,8 +522,14 @@ static struct tick_work_q tcp_tick_work = {
     .tick_fn = tcp_tick
 };
 
+static struct protocol_t tcp_protocol  = {
+    .rx_pkt = tcp_rx_packet,
+    .type = TCP
+};
+
 void tcp_init(void)
 {
     tick_add_work_fn(&tcp_tick_work);
+    protocol_register(&tcp_protocol);
 }
 initcall(tcp_init);

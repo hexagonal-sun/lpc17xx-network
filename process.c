@@ -128,7 +128,7 @@ static void __idle_task(void)
     }
 }
 
-static void process_init(void)
+void process_init(void)
 {
     extern thread_t _sthreads, _ethreads;
     thread_t *cur = &_sthreads;
@@ -143,7 +143,6 @@ static void process_init(void)
      * doesn't attempt to stack values of an empty task. */
     asm volatile("msr psp, %0" : : "r"(zero));
 }
-initcall(process_init);
 
 void *pick_new_task(void *current_stack)
 {

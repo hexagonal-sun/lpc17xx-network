@@ -56,8 +56,6 @@ typedef struct
     list tcb_next;
 } tcb;
 
-void tcp_rx_packet(uint32_t dst_ip, void *payload, int payload_len);
-
 /* Perform a 3-way handshake and establish a TCP connection. */
 tcb *tcp_connect(uint16_t port, uint32_t ip);
 

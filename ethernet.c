@@ -9,15 +9,9 @@
 #include "tick.h"
 #include "init.h"
 #include "process.h"
+#include "protocol.h"
 #include "wait.h"
 #include <string.h>
-
-struct ether_rx_q_t
-{
-    void *packet;
-    uint16_t packet_len;
-    list packets;
-};
 
 struct ether_tx_q_t
 {
@@ -28,29 +22,8 @@ struct ether_tx_q_t
     list next;
 };
 
-static LIST(ether_rx_queue);
-static WAITQUEUE(ether_rx_waitq);
-
 static LIST(ether_tx_queue);
 static WAITQUEUE(ether_tx_waitq);
-
-void ether_rx_frame(void *frame, int frame_len)
-{
-    struct ether_rx_q_t *newPacket = get_mem(sizeof(*newPacket));
-    irq_flags_t flags;
-
-    void *our_frame = get_mem(frame_len);
-    memcpy(our_frame, frame, frame_len);
-
-    newPacket->packet = our_frame;
-    newPacket->packet_len = frame_len;
-
-    flags = irq_disable();
-    list_add(&newPacket->packets, &ether_rx_queue);
-    irq_enable(flags);
-
-    waitqueue_wakeup(&ether_rx_waitq);
-}
 
 void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
               void *payload, int len)
@@ -73,29 +46,6 @@ void ether_tx(uint8_t dhost[ETHER_ADDR_LEN], uint16_t ether_type,
     waitqueue_wakeup(&ether_tx_waitq);
 }
 
-
-static void ether_process_frame(void *frame, int frame_len)
-{
-    static int no_dropped_packets;
-    ethernet_header *header = frame;
-    void *payload = frame + sizeof(*header);
-    int payload_len = frame_len - sizeof(*header);
-
-    swap_endian16(&header->ether_type);
-
-    switch (header->ether_type)
-    {
-    case ETHERTYPE_ARP:
-        arp_process_packet(payload, payload_len);
-        break;
-    case ETHERTYPE_IP:
-        ip4_rx_packet(payload, payload_len);
-        break;
-    default:
-        /* Drop the packet. */
-        no_dropped_packets++;
-    }
-}
 
 static void ether_xmit_payload(uint8_t dhost[ETHER_ADDR_LEN],
                                uint16_t ether_type, void *payload, int len)
@@ -129,28 +79,41 @@ void ethernet_mac_copy(uint8_t *dst, uint8_t *src)
     memcpy(dst, src, ETHER_ADDR_LEN);
 }
 
-static void ether_rx_task(void)
+static void ethernet_rx_pkt(struct packet_t *pkt)
 {
-    while (1) {
-        struct ether_rx_q_t *rxd_pkt;
-        irq_flags_t flags;
+    static int no_dropped_packets;
+    ethernet_header *header = (ethernet_header *)pkt->cur_data;
+    pkt->cur_data += sizeof(*header);
+    pkt->cur_data_length -= sizeof(*header);
 
-        wait_for_volatile_condition((!list_empty(&ether_rx_queue)),
-                                    ether_rx_waitq);
+    swap_endian16(&header->ether_type);
 
-        flags = irq_disable();
-        list_pop(rxd_pkt, &ether_rx_queue, packets);
-        irq_enable(flags);
-
-        if (rxd_pkt) {
-            ether_process_frame(rxd_pkt->packet, rxd_pkt->packet_len);
-
-            free_mem(rxd_pkt->packet);
-            free_mem(rxd_pkt);
-        }
+    switch (header->ether_type)
+    {
+    case ETHERTYPE_ARP:
+        pkt->handler = ARP;
+        break;
+    case ETHERTYPE_IP:
+        pkt->handler = IPV4;
+        break;
+    default:
+        /* Drop the packet. */
+        pkt->handler = DROP;
+        no_dropped_packets++;
+        break;
     }
 }
-thread(ether_rx_task);
+
+struct protocol_t ethernet_protocol = {
+    .type = ETHERNET,
+    .rx_pkt = ethernet_rx_pkt
+};
+
+void ethernet_init(void)
+{
+    protocol_register(&ethernet_protocol);
+}
+initcall(ethernet_init);
 
 static void ether_tx_task(void)
 {

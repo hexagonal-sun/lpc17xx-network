@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "arp.h"
 #include "byteswap.h"
+#include "protocol.h"
 #include "emac.h"
 #include "tick.h"
 #include "list.h"
@@ -113,9 +114,14 @@ uint8_t * resolve_address(uint32_t ip_address)
     return arp_p_req.answer->ether_addr;
 }
 
-void arp_process_packet(void *payload, int payload_len)
+static void arp_rx_packet(struct packet_t *pkt)
 {
-    arp_packet *packet = payload;
+    arp_packet *packet = (arp_packet *)pkt->cur_data;
+
+    /* This function will process any arp packets; they're not passed
+     * to any other prtocol layers.  Therefore, we can drop this
+     * packet once we have finished processing it. */
+    pkt->handler = DROP;
 
     arp_swap_endian(packet);
 
@@ -198,12 +204,18 @@ void arp_process_packet(void *payload, int payload_len)
     }
 }
 
+struct protocol_t arp_protocol = {
+    .type = ARP,
+    .rx_pkt = arp_rx_packet
+};
+
 struct tick_work_q arp_tick_work = {
     .tick_fn = arp_tick
 };
 
-void arp_init(void)
+static void arp_init(void)
 {
     tick_add_work_fn(&arp_tick_work);
+    protocol_register(&arp_protocol);
 }
 initcall(arp_init);

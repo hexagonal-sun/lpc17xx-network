@@ -3,6 +3,8 @@
 #include "irq.h"
 #include "byteswap.h"
 #include "memory.h"
+#include "init.h"
+#include "protocol.h"
 #include "list.h"
 #include "error.h"
 #include "wait.h"
@@ -55,16 +57,25 @@ int udp_rx(uint16_t port, void *dst_buf, uint16_t dst_buf_sz)
     return newListener.dst_buf_ptr;
 }
 
-void udp_rx_packet(uint32_t dst_ip, void *payload, int payload_len)
+void udp_rx_packet(struct packet_t *pkt)
 {
     udp_listener *i;
-    udp_header *header = (udp_header *)payload;
-    uint8_t *udp_payload = (payload + sizeof(udp_header));
+    udp_header *header = (udp_header *)pkt->cur_data;
+    uint8_t *udp_payload;
+    size_t udp_payload_sz;
     irq_flags_t flags;
+
+    pkt->cur_data += sizeof(*header);
+    pkt->cur_data_length -= sizeof(*header);
+
+    udp_payload = pkt->cur_data;
+    udp_payload_sz = pkt->cur_data_length;
 
     udp_swap_endian(header);
 
-    size_t udp_payload_sz = header->length - sizeof(udp_header);
+    /* Drop the packet as it will either not be found, or the udp
+     * payload contents will be copied to the user supplied buffer. */
+    pkt->handler = DROP;
 
     flags = irq_disable();
     list_for_each(i, &udp_rx_requests, rx_requests) {
@@ -105,3 +116,14 @@ void udp_xmit_packet(uint16_t dst_port, uint32_t dst_ip, void *payload,
 
     free_mem(packet_buf);
 }
+
+static struct protocol_t udp_procotol = {
+    .rx_pkt = udp_rx_packet,
+    .type = UDP
+};
+
+static void udp_init(void)
+{
+    protocol_register(&udp_procotol);
+}
+initcall(udp_init);

@@ -2,9 +2,9 @@
 #include "byteswap.h"
 #include "arp.h"
 #include "ethernet.h"
+#include "init.h"
+#include "protocol.h"
 #include "memory.h"
-#include "udp.h"
-#include "tcp.h"
 #include "process.h"
 #include "irq.h"
 #include "wait.h"
@@ -14,22 +14,12 @@
 
 typedef struct
 {
-    void *packet;
-    uint16_t packet_len;
-    list packets;
-} ip4_rx_q_t;
-
-typedef struct
-{
     uint8_t protocol;
     uint32_t dst_ip;
     void *payload;
     uint16_t payload_len;
     list next;
 } ip4_tx_q_t;
-
-static LIST(ip4_rx_queue);
-static WAITQUEUE(ip4_rx_waitq);
 
 static LIST(ip4_tx_queue);
 static WAITQUEUE(ip4_tx_waitq);
@@ -57,55 +47,45 @@ static void ip4_compute_checksum(ip4_header *header)
     header->header_checksum = ~sum;
 }
 
-void ip4_rx_packet(void *packet, int packet_len)
+static void ipv4_rx_packet(struct packet_t *pkt)
 {
-    ip4_rx_q_t *new_packet = get_mem(sizeof(*new_packet));
-    irq_flags_t flags;
-
-    void *our_packet = get_mem(packet_len);
-    memcpy(our_packet, packet, packet_len);
-
-    new_packet->packet = our_packet;
-    new_packet->packet_len = packet_len;
-
-    flags = irq_disable();
-    list_add(&new_packet->packets, &ip4_rx_queue);
-    irq_enable(flags);
-
-    waitqueue_wakeup(&ip4_rx_waitq);
-}
-
-static void ip4_do_rx_packet(void *packet, int packet_len)
-{
-    ip4_header *header = (ip4_header *)packet;
+    ip4_header *header = (ip4_header *)pkt->cur_data;
     void *payload;
-    int payload_len, header_len;
+    size_t payload_len, header_len;
 
     ip4_swap_endian(header);
 
     /* TODO: checksum checking. */
 
     header_len = header->ihl * 4;
-    payload = packet + header_len;
-    payload_len = header->tot_length - header_len;
+    pkt->cur_data += header_len;
+    pkt->cur_data_length -= header_len;
 
     /* Drop packet if ttl is zero. */
-    if (!header->ttl)
+    if (!header->ttl) {
+        pkt->handler = DROP;
         return;
+    }
 
     /* Drop packet if it is not addressed to us. */
-    if (header->dst_ip != OUR_IP_ADDRESS)
+    if (header->dst_ip != OUR_IP_ADDRESS) {
+        pkt->handler = DROP;
         return;
+    }
+
+    pkt->ip4_info.dst_ip = header->dst_ip;
+    pkt->ip4_info.src_ip = header->src_ip;
 
     switch (header->protocol)
     {
     case IP_PROTO_TCP:
-        tcp_rx_packet(header->src_ip, payload, payload_len);
+        pkt->handler = TCP;
         break;
     case IP_PROTO_UDP:
-        udp_rx_packet(header->src_ip, payload, payload_len);
+        pkt->handler = UDP;
         break;
     default:
+        pkt->handler = DROP;
         return;
     }
 }
@@ -176,29 +156,6 @@ static void ip4_do_xmit_packet(uint8_t protocol, uint32_t dst_ip, void *payload,
     free_mem(packet_buf);
 }
 
-static void ip4_rx_task(void)
-{
-    while (1) {
-        ip4_rx_q_t *rxd_pkt;
-        irq_flags_t flags;
-
-        wait_for_volatile_condition((!list_empty(&ip4_rx_queue)),
-                                    ip4_rx_waitq);
-
-        flags = irq_disable();
-        list_pop(rxd_pkt, &ip4_rx_queue, packets);
-        irq_enable(flags);
-
-        if (rxd_pkt) {
-            ip4_do_rx_packet(rxd_pkt->packet, rxd_pkt->packet_len);
-
-            free_mem(rxd_pkt->packet);
-            free_mem(rxd_pkt);
-        }
-    }
-}
-thread(ip4_rx_task)
-
 static void ip4_tx_task(void)
 {
     while (1) {
@@ -221,4 +178,15 @@ static void ip4_tx_task(void)
         }
     }
 }
-thread(ip4_tx_task)
+thread(ip4_tx_task);
+
+static struct protocol_t ipv4_protocol = {
+    .rx_pkt = ipv4_rx_packet,
+    .type = IPV4
+};
+
+static void ipv4_init(void)
+{
+    protocol_register(&ipv4_protocol);
+}
+initcall(ipv4_init);

@@ -2,6 +2,7 @@
 #include "arp.h"
 #include "memory.h"
 #include "byteswap.h"
+#include "protocol.h"
 #include "init.h"
 #include <string.h>
 
@@ -79,11 +80,10 @@ void irq_enet()
 
         /* Do we have a full frame? */
         if (rx_status[desc_idx].status_info & (1 << 30)) {
+            struct packet_t *pkt = packet_create(current_frame,
+                                                 current_frame_len);
 
-            /* We do, process it. */
-            ether_rx_frame(current_frame, current_frame_len);
-
-            free_mem(current_frame);
+            packet_inject(pkt, ETHERNET);
             current_frame = 0;
             current_frame_len = 0;
         }
