@@ -28,7 +28,8 @@ typedef struct {
 
 typedef struct
 {
-    void *stack;
+    void *cur_stack;
+    void *stack_alloc;
     list cur_sched_queue;
     enum {
         RUNNING,

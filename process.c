@@ -14,6 +14,8 @@ static LIST(deadqueue);
 static process_t *current_tsk = NULL;
 static process_t *idle_tsk;
 
+#define STACK_SZ 0x400
+
 static void reschedule()
 {
     __irq_enable();
@@ -66,24 +68,33 @@ static void process_finish()
 
 static process_t *create_process(memaddr_t pc, memaddr_t r0)
 {
-    static void *next_stack = (void *)0x10007C00;
     process_t *new_process = get_mem(sizeof(*new_process));
     hw_stack_ctx *new_hw_stack_ctx;
     sw_stack_ctx *new_sw_stack_ctx;
 
-    new_hw_stack_ctx = next_stack - sizeof(hw_stack_ctx);;
-    new_sw_stack_ctx = new_process->stack =
+    /* We ask the heap for some new stack space. */
+    new_process->stack_alloc = get_mem(STACK_SZ);
+
+    /* Since on the cortex-m, the stack is descending, move the
+     * current stack pointer to the end of the allocation.  Reserve
+     * space for the hw_stack_ctx too, as this will be pop'd off by
+     * the HW when the process is first executed. */
+    new_hw_stack_ctx = (new_process->stack_alloc + STACK_SZ) -
+        sizeof(hw_stack_ctx);
+
+    /* Allocate space in the new stack for the SW stack context, as
+     * this will be pop'd by the SW when the process is first
+     * executed. */
+    new_sw_stack_ctx = new_process->cur_stack =
         (void *)new_hw_stack_ctx - sizeof(sw_stack_ctx);
 
     memset(new_hw_stack_ctx, 0, sizeof(*new_hw_stack_ctx));
     memset(new_sw_stack_ctx, 0, sizeof(*new_sw_stack_ctx));
 
     new_hw_stack_ctx->pc = pc;
-    new_hw_stack_ctx->lr = process_finish;
+    new_hw_stack_ctx->lr = (memaddr_t)process_finish;
     new_hw_stack_ctx->r0 = r0;
     new_hw_stack_ctx->psr = 0x01000000;
-
-    next_stack -= 0x400;    /* 1k per stack. */
 
     return new_process;
 }
@@ -106,8 +117,10 @@ static void __idle_task(void)
         irq_flags_t flags = irq_disable();
         list_pop(dead_process, &deadqueue, cur_sched_queue);
 
-        if (dead_process)
+        if (dead_process) {
+            free_mem(dead_process->stack_alloc);
             free_mem(dead_process);
+        }
 
         irq_enable(flags);
 
@@ -148,7 +161,7 @@ void *pick_new_task(void *current_stack)
              * stack. */
             asm volatile("b .");
 
-        current_tsk->stack = current_stack;
+        current_tsk->cur_stack = current_stack;
 
         /* Since we could be called for a process that has just been
          * put to sleep, ensure the process is in a RUNNING state
@@ -168,5 +181,5 @@ void *pick_new_task(void *current_stack)
 
     irq_enable(flags);
 
-    return next->stack;
+    return next->cur_stack;
 }
