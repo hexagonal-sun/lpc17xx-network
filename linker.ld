@@ -1,7 +1,7 @@
 MEMORY {
    rom  (RX)  : ORIGIN = 0x0,        LENGTH = 512k
    ram1 (RWX) : ORIGIN = 0x10000000, LENGTH = 32k
-   ram2 (RWX) : ORIGIN = 0x2007C000, LENGTH = 16k
+   ram2 (RWX) : ORIGIN = 0x2007C000, LENGTH = 32k
 }
 
 _sram1  = ORIGIN(ram1);
@@ -45,6 +45,10 @@ SECTIONS {
         *(COMMON)
         _ebss = .;
     } >ram1 AT >rom
+
+    .heap (NOLOAD) : {
+        *(.heap)
+    } >ram2 AT >rom
 }
 
 program_checksum = -(_sstack + _start + irq_nmi + irq_hardfault +

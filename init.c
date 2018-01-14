@@ -1,6 +1,7 @@
 #include "init.h"
 #include "lpc17xx.h"
 #include "irq.h"
+#include "memory.h"
 #include <stdint.h>
 
 
@@ -80,6 +81,8 @@ void __attribute__((noreturn)) _start()
 
     /* Bring the MCU up to 100 Mhz operation. */
     init_clocking();
+
+    mem_setup();
 
     call_initcalls();
 
